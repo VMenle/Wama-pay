@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zahlung wird verarbeitet – Wama-Pay</title>
+<link rel="stylesheet" href="../assets/shared.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="app-navbar">
+    <a href="index.html" class="app-brand"><span class="app-brand-mark"></span>Wama-Pay</a>
+  </div>
+</header>
+
+<main>
+  <div class="wrap-narrow">
+    <div class="notice notice-todo" style="max-width:440px; margin:0 auto 20px;">
+      TODO (Checkout-Anbindung folgt zuletzt): Diese Seite simuliert aktuell den
+      Ablauf. Produktiv wird hier der Order-Status per
+      <code>get_order_status(order_id)</code> abgefragt (Polling oder Realtime),
+      bis die Edge Function <code>payment-webhook</code> die Zahlung bestätigt
+      und die Freigabe ausgelöst hat.
+    </div>
+
+    <div class="process-panel">
+      <div class="process-spinner" id="spinner"></div>
+      <h1 id="process-title" style="font-size:20px; margin-bottom:8px;">Zahlung wird geprüft…</h1>
+      <p id="process-subtitle" style="color:var(--ink-soft); font-size:14px;">Bitte schließen Sie dieses Fenster nicht.</p>
+
+      <ul class="process-steps" id="steps">
+        <li id="step-1"><span class="dot"></span> Zahlung wird bestätigt</li>
+        <li id="step-2"><span class="dot"></span> Gerät wird freigeschaltet</li>
+        <li id="step-3"><span class="dot"></span> Bereit zur Nutzung</li>
+      </ul>
+    </div>
+  </div>
+</main>
+
+<script>
+  var params = new URLSearchParams(window.location.search);
+  var deviceId = params.get("device") || "demo-1";
+  var method = params.get("method") || "provider";
+
+  function markDone(id) { document.getElementById(id).classList.add("done"); }
+
+  // Demo-Ablaufsimulation (kein echter Zahlungsvorgang).
+  setTimeout(function () { markDone("step-1"); }, 900);
+  setTimeout(function () { markDone("step-2"); }, 1800);
+  setTimeout(function () {
+    markDone("step-3");
+    window.location.href = "freigabe.html?device=" + encodeURIComponent(deviceId) + "&method=" + encodeURIComponent(method);
+  }, 2600);
+</script>
+
+</body>
+</html>

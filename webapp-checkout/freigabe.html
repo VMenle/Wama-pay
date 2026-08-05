@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Freigegeben – Wama-Pay</title>
+<link rel="stylesheet" href="../assets/shared.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="app-navbar">
+    <a href="index.html" class="app-brand"><span class="app-brand-mark"></span>Wama-Pay</a>
+  </div>
+</header>
+
+<main>
+  <div class="wrap-narrow">
+    <div class="process-panel">
+      <div class="process-check">✓</div>
+      <h1 style="font-size:22px; margin-bottom:8px;">Gerät freigegeben</h1>
+      <p style="color:var(--ink-soft); font-size:14.5px; margin-bottom:24px;">
+        Die Zahlung wurde bestätigt, das Gerät läuft jetzt den vollständigen
+        Waschgang durch. Es stoppt nicht vorzeitig nach einer festen Zeit.
+      </p>
+
+      <div id="notify-block" class="card" style="text-align:left; margin-bottom:20px;">
+        <h3 style="font-size:15px; margin-bottom:6px;">Benachrichtigung, wenn fertig?</h3>
+        <p style="font-size:13.5px; color:var(--ink-soft); margin-bottom:14px;">
+          Analog zu "Wecker aktivieren": Wir informieren Sie automatisch per
+          E-Mail, sobald der Waschgang fertig ist.
+        </p>
+        <div id="notify-login-hint" style="display:none; font-size:13.5px; color:var(--ink-soft);">
+          Nur mit Login verfügbar. <a href="../webapp-customer/index.html" style="color:var(--blue); font-weight:700;">Jetzt anmelden</a>
+        </div>
+        <button id="notify-btn" class="btn-ghost btn-block">Benachrichtigung aktivieren</button>
+      </div>
+
+      <a href="index.html" class="btn-primary btn-block">Zur Geräteübersicht</a>
+    </div>
+  </div>
+</main>
+
+<script src="../assets/config.js"></script>
+<script src="../assets/supabase-client.js"></script>
+<script>
+  // TODO (Checkout-Anbindung folgt zuletzt): "Benachrichtigung aktivieren"
+  // setzt produktiv orders.notify_on_release (bzw. nutzt die Standard-
+  // Einstellung aus customer_notification_settings) für die konkrete Order.
+  // Der n8n-Workflow "Maschine fertig" liest diese Einstellung, bevor er die
+  // Benachrichtigung auslöst. Hier nur UI-Gerüst mit Login-Prüfung.
+  (async function () {
+    try {
+      var client = await window.wamaSupabaseReady;
+      var cfg = window.WAMA_PAY_CONFIG;
+      if (!cfg.supabaseUrl || cfg.supabaseUrl.indexOf("TODO_") === 0) throw new Error("no config");
+      var { data } = await client.auth.getSession();
+      if (!data || !data.session) {
+        document.getElementById("notify-btn").style.display = "none";
+        document.getElementById("notify-login-hint").style.display = "block";
+      }
+    } catch (e) {
+      document.getElementById("notify-btn").style.display = "none";
+      document.getElementById("notify-login-hint").style.display = "block";
+    }
+  })();
+
+  document.getElementById("notify-btn").addEventListener("click", function (e) {
+    e.target.textContent = "Benachrichtigung aktiv ✓";
+    e.target.disabled = true;
+  });
+</script>
+
+</body>
+</html>

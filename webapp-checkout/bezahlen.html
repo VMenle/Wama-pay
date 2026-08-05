@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bezahlen – Wama-Pay</title>
+<link rel="stylesheet" href="../assets/shared.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="app-navbar">
+    <a href="index.html" class="app-brand"><span class="app-brand-mark"></span>Wama-Pay</a>
+    <nav class="app-nav-links">
+      <a href="index.html">← Zur Übersicht</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap-narrow">
+    <div class="page-head">
+      <span class="eyebrow">Schritt 2 von 3 · Bezahlen</span>
+      <h1 id="device-title">Gerät wird geladen…</h1>
+      <p id="device-subtitle"></p>
+    </div>
+
+    <div id="content-root">
+      <p style="color:var(--ink-soft);">Lade Gerätedaten…</p>
+    </div>
+  </div>
+</main>
+
+<footer class="app-footer">
+  <div class="wrap" style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px; width:100%;">
+    <span>© 2026 Wama-Pay</span>
+    <span><a href="faq.html">FAQ</a> · <a href="hilfe.html">Anleitung</a> · <a href="impressum.html">Impressum</a> · <a href="datenschutz.html">Datenschutz</a></span>
+    <a href="mailto:info@energy-leisure.de">info@energy-leisure.de</a>
+  </div>
+</footer>
+
+<script src="../assets/config.js"></script>
+<script src="../assets/supabase-client.js"></script>
+<script>
+  var DEVICE_LABELS = { washer: "Waschmaschine", dryer: "Trockner", trailer: "Anhänger", card_dispenser: "Kartenspender" };
+
+  var params = new URLSearchParams(window.location.search);
+  var deviceId = params.get("device");
+
+  var DEMO_DEVICE = {
+    id: "demo-1", type: "washer", label: "Waschmaschine 1", status: "free",
+    location: { name: "Waschküche Musterstraße 12" }, price_cents: 120, currency: "EUR"
+  };
+
+  function formatPrice(cents, currency) {
+    return (cents / 100).toLocaleString("de-DE", { style: "currency", currency: currency || "EUR" });
+  }
+
+  function renderPaymentOptions(device, isLoggedIn, isDemo) {
+    document.getElementById("device-title").textContent = device.label;
+    document.getElementById("device-subtitle").textContent =
+      (device.location ? device.location.name + " · " : "") + formatPrice(device.price_cents, device.currency) + " pro Nutzung";
+
+    var root = document.getElementById("content-root");
+    root.innerHTML = "";
+
+    if (isDemo) {
+      var notice = document.createElement("div");
+      notice.className = "notice notice-warn";
+      notice.textContent = "Hinweis: Demo-Daten, Supabase noch nicht verbunden.";
+      root.appendChild(notice);
+    }
+
+    if (device.status !== "free") {
+      var busyNotice = document.createElement("div");
+      busyNotice.className = "notice notice-warn";
+      busyNotice.textContent = "Dieses Gerät ist gerade nicht frei.";
+      root.appendChild(busyNotice);
+      var back = document.createElement("a");
+      back.href = "index.html";
+      back.className = "btn-ghost btn-block";
+      back.textContent = "Zurück zur Übersicht";
+      root.appendChild(back);
+      return;
+    }
+
+    var todoNotice = document.createElement("div");
+    todoNotice.className = "notice notice-todo";
+    todoNotice.textContent =
+      "TODO (Checkout-Anbindung folgt zuletzt): Die eigentliche Zahlungsauslösung " +
+      "über SumUp läuft über die Edge Function payment-webhook + SumUp-Adapter " +
+      "(siehe docs/payment-provider-adapter.md). Aktuell nur UI-Gerüst, keine echte Zahlung.";
+    root.appendChild(todoNotice);
+
+    var card = document.createElement("div");
+    card.className = "card";
+
+    var directBtn = document.createElement("button");
+    directBtn.className = "btn-primary btn-block";
+    directBtn.textContent = "Direkt mit SumUp bezahlen (" + formatPrice(device.price_cents, device.currency) + ")";
+    directBtn.addEventListener("click", function () {
+      startCheckout(device, "provider");
+    });
+
+    var walletWrap = document.createElement("div");
+    walletWrap.style.marginTop = "14px";
+
+    if (isLoggedIn) {
+      var walletBtn = document.createElement("button");
+      walletBtn.className = "btn-ghost btn-block";
+      walletBtn.textContent = "Vom Guthaben bezahlen";
+      walletBtn.addEventListener("click", function () {
+        startCheckout(device, "wallet");
+      });
+      walletWrap.appendChild(walletBtn);
+    } else {
+      var loginHint = document.createElement("p");
+      loginHint.style.cssText = "font-size:13.5px; color:var(--ink-soft); margin-top:14px;";
+      loginHint.innerHTML = 'Guthaben-Zahlung ist nur mit Login möglich. <a href="../webapp-customer/index.html" style="color:var(--blue); font-weight:700;">Jetzt anmelden</a>';
+      walletWrap.appendChild(loginHint);
+    }
+
+    card.appendChild(directBtn);
+    card.appendChild(walletWrap);
+    root.appendChild(card);
+  }
+
+  function startCheckout(device, method) {
+    // TODO: hier wird künftig die Order (Reservierung) über eine Edge
+    // Function angelegt und bei method === 'provider' der SumUp-Checkout
+    // gestartet. Bis dahin nur Weiterleitung zur Verarbeitungs-Ansicht.
+    window.location.href = "verarbeitung.html?device=" + encodeURIComponent(device.id) + "&method=" + method;
+  }
+
+  async function loadDeviceAndAuth() {
+    var client = await window.wamaSupabaseReady;
+    var cfg = window.WAMA_PAY_CONFIG;
+    if (!cfg.supabaseUrl || cfg.supabaseUrl.indexOf("TODO_") === 0) throw new Error("Supabase nicht konfiguriert");
+    if (!deviceId) throw new Error("Kein Gerät angegeben");
+
+    var { data: device, error } = await client
+      .from("devices").select("id, type, label, status, location_id, locations(name)")
+      .eq("id", deviceId).single();
+    if (error || !device) throw error || new Error("Gerät nicht gefunden");
+
+    var { data: product } = await client
+      .from("products").select("price_cents, currency")
+      .eq("device_type", device.type).eq("location_id", device.location_id).eq("is_active", true).maybeSingle();
+
+    var { data: sessionData } = await client.auth.getSession();
+
+    return {
+      device: {
+        id: device.id, type: device.type, label: device.label, status: device.status,
+        location: device.locations, price_cents: product ? product.price_cents : 0,
+        currency: product ? product.currency : "EUR"
+      },
+      isLoggedIn: !!(sessionData && sessionData.session)
+    };
+  }
+
+  loadDeviceAndAuth()
+    .then(function (r) { renderPaymentOptions(r.device, r.isLoggedIn, false); })
+    .catch(function () { renderPaymentOptions(DEMO_DEVICE, false, true); });
+</script>
+
+</body>
+</html>

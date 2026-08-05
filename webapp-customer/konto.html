@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kontodaten – Wama-Pay</title>
+<link rel="stylesheet" href="../assets/shared.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="app-navbar">
+    <a href="dashboard.html" class="app-brand"><span class="app-brand-mark"></span>Wama-Pay</a>
+    <nav class="app-nav-links">
+      <a href="dashboard.html">Guthaben</a>
+      <a href="konto.html" class="active">Kontodaten</a>
+      <a href="benachrichtigungen.html">Benachrichtigungen</a>
+      <a href="../webapp-checkout/index.html">Geräte</a>
+      <a href="#" id="logout-link">Abmelden</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap-narrow">
+    <div class="page-head">
+      <span class="eyebrow">Kontodaten</span>
+      <h1>Kontakt- &amp; Bankdaten</h1>
+      <p>Beide Bereiche können Sie jederzeit selbst ändern.</p>
+    </div>
+
+    <div id="config-notice"></div>
+
+    <div class="card" style="margin-bottom:20px;">
+      <h3 style="font-size:15px; margin-bottom:14px;">Kontaktdaten</h3>
+      <form id="contact-form">
+        <div class="field">
+          <label for="full_name">Name</label>
+          <input type="text" id="full_name" autocomplete="name">
+        </div>
+        <div class="field">
+          <label for="phone">Telefon <span class="hint">(freiwillig)</span></label>
+          <input type="tel" id="phone" autocomplete="tel">
+        </div>
+        <div class="field">
+          <label for="email">E-Mail</label>
+          <input type="email" id="email" disabled>
+        </div>
+        <button type="submit" class="btn-primary">Kontaktdaten speichern</button>
+        <div class="form-error" id="contact-error" style="display:none;"></div>
+        <div class="form-success" id="contact-success" style="display:none;"></div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3 style="font-size:15px; margin-bottom:6px;">Bankdaten</h3>
+      <p style="font-size:13px; color:var(--ink-soft); margin-bottom:14px;">
+        IBAN/BIC werden verschlüsselt gespeichert. Hier wird nur die maskierte
+        IBAN angezeigt.
+      </p>
+      <div id="bank-current" style="margin-bottom:16px;"></div>
+      <form id="bank-form">
+        <div class="field">
+          <label for="account_holder">Kontoinhaber</label>
+          <input type="text" id="account_holder" required>
+        </div>
+        <div class="field">
+          <label for="iban">IBAN</label>
+          <input type="text" id="iban" required placeholder="DE00 0000 0000 0000 0000 00">
+        </div>
+        <div class="field">
+          <label for="bic">BIC <span class="hint">(freiwillig)</span></label>
+          <input type="text" id="bic">
+        </div>
+        <button type="submit" class="btn-primary">Bankdaten speichern</button>
+        <div class="form-error" id="bank-error" style="display:none;"></div>
+        <div class="form-success" id="bank-success" style="display:none;"></div>
+      </form>
+    </div>
+  </div>
+</main>
+
+<footer class="app-footer">
+  <div class="wrap" style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px; width:100%;">
+    <span>© 2026 Wama-Pay</span>
+    <span><a href="../webapp-checkout/faq.html">FAQ</a> · <a href="../webapp-checkout/datenschutz.html">Datenschutz</a></span>
+    <a href="mailto:info@energy-leisure.de">info@energy-leisure.de</a>
+  </div>
+</footer>
+
+<script src="../assets/config.js"></script>
+<script src="../assets/supabase-client.js"></script>
+<script>
+  function showMsg(idErr, idOk, isError, msg) {
+    document.getElementById(isError ? idOk : idErr).style.display = "none";
+    var el = document.getElementById(isError ? idErr : idOk);
+    el.textContent = msg;
+    el.style.display = "block";
+  }
+
+  (async function init() {
+    var cfg = window.WAMA_PAY_CONFIG;
+    if (!cfg.supabaseUrl || cfg.supabaseUrl.indexOf("TODO_") === 0) {
+      var notice = document.createElement("div");
+      notice.className = "notice notice-warn";
+      notice.textContent = "Hinweis: Supabase ist noch nicht verbunden – Formulare können noch nicht speichern.";
+      document.getElementById("config-notice").appendChild(notice);
+      return;
+    }
+
+    var client = await window.wamaSupabaseReady;
+    var { data: sessionData } = await client.auth.getSession();
+    if (!sessionData || !sessionData.session) { window.location.href = "index.html"; return; }
+    var userId = sessionData.session.user.id;
+
+    document.getElementById("logout-link").addEventListener("click", async function (e) {
+      e.preventDefault();
+      await client.auth.signOut();
+      window.location.href = "index.html";
+    });
+
+    var { data: customer } = await client.from("customers").select("full_name, phone, email").eq("id", userId).single();
+    if (customer) {
+      document.getElementById("full_name").value = customer.full_name || "";
+      document.getElementById("phone").value = customer.phone || "";
+      document.getElementById("email").value = customer.email || "";
+    }
+
+    var { data: bank } = await client.from("customer_bank_details_masked").select("iban_masked, account_holder").eq("customer_id", userId).maybeSingle();
+    var bankCurrent = document.getElementById("bank-current");
+    if (bank) {
+      bankCurrent.innerHTML = '<div class="notice notice-info">Hinterlegt: ' + bank.account_holder + " · " + bank.iban_masked + "</div>";
+    } else {
+      bankCurrent.innerHTML = '<div class="notice notice-info">Noch keine Bankdaten hinterlegt.</div>';
+    }
+
+    document.getElementById("contact-form").addEventListener("submit", async function (e) {
+      e.preventDefault();
+      try {
+        var { error } = await client.from("customers").update({
+          full_name: document.getElementById("full_name").value.trim(),
+          phone: document.getElementById("phone").value.trim()
+        }).eq("id", userId);
+        if (error) throw error;
+        showMsg("contact-error", "contact-success", false, "Kontaktdaten gespeichert.");
+      } catch (err) {
+        showMsg("contact-error", "contact-success", true, err.message || "Fehler beim Speichern.");
+      }
+    });
+
+    document.getElementById("bank-form").addEventListener("submit", async function (e) {
+      e.preventDefault();
+      try {
+        var { error } = await client.rpc("upsert_customer_bank_details", {
+          p_customer_id: userId,
+          p_account_holder: document.getElementById("account_holder").value.trim(),
+          p_iban: document.getElementById("iban").value.trim(),
+          p_bic: document.getElementById("bic").value.trim() || null
+        });
+        if (error) throw error;
+        showMsg("bank-error", "bank-success", false, "Bankdaten gespeichert.");
+        document.getElementById("bank-form").reset();
+        var { data: refreshed } = await client.from("customer_bank_details_masked").select("iban_masked, account_holder").eq("customer_id", userId).maybeSingle();
+        if (refreshed) bankCurrent.innerHTML = '<div class="notice notice-info">Hinterlegt: ' + refreshed.account_holder + " · " + refreshed.iban_masked + "</div>";
+      } catch (err) {
+        showMsg("bank-error", "bank-success", true, err.message || "Fehler beim Speichern.");
+      }
+    });
+  })();
+</script>
+
+</body>
+</html>

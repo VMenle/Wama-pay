@@ -1,0 +1,208 @@
+{
+  "name": "Wama-Pay – Order Released – Maschine fertig",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wama-pay/order-released",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-order-released",
+      "name": "Webhook: Order Released",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-1200, 0],
+      "webhookId": "wama-pay-order-released"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.WAMA_PAY_SUPABASE_URL}}/rest/v1/orders",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "id", "value": "=eq.{{$json.body.order_id}}" },
+            { "name": "select", "value": "id,customer_id,released_at,products(avg_cycle_minutes,name),devices(label),customers(email,full_name)" }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{$credentials.supabaseServiceRole.apiKey}}" },
+            { "name": "Authorization", "value": "=Bearer {{$credentials.supabaseServiceRole.apiKey}}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-load-order",
+      "name": "Order + Produkt laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-960, 0],
+      "credentials": {
+        "httpHeaderAuth": { "id": "supabase-service-role", "name": "Supabase Service Role" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const order = $input.first().json[0];\nreturn [{ json: order }];"
+      },
+      "id": "code-unwrap-order",
+      "name": "Order-Datensatz entpacken",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-720, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "has-customer",
+              "leftValue": "={{$json.customer_id}}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-has-customer",
+      "name": "Eingeloggter Kunde?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-480, 0]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.WAMA_PAY_SUPABASE_URL}}/rest/v1/customer_notification_settings",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "customer_id", "value": "=eq.{{$json.customer_id}}" },
+            { "name": "select", "value": "notify_on_release,channel" }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{$credentials.supabaseServiceRole.apiKey}}" },
+            { "name": "Authorization", "value": "=Bearer {{$credentials.supabaseServiceRole.apiKey}}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-load-notification-settings",
+      "name": "Benachrichtigungs-Einstellung laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-240, -100],
+      "credentials": {
+        "httpHeaderAuth": { "id": "supabase-service-role", "name": "Supabase Service Role" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const order = $('Order-Datensatz entpacken').first().json;\nconst settings = $input.first().json[0] || { notify_on_release: false };\nreturn [{ json: { ...order, notify_on_release: settings.notify_on_release, channel: settings.channel } }];"
+      },
+      "id": "code-merge-settings",
+      "name": "Order + Einstellung zusammenführen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [0, -100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "notify-enabled",
+              "leftValue": "={{$json.notify_on_release}}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-notify-enabled",
+      "name": "Benachrichtigung gewünscht?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [240, -100]
+    },
+    {
+      "parameters": {
+        "amount": "={{$json.products.avg_cycle_minutes}}",
+        "unit": "minutes"
+      },
+      "id": "wait-cycle-duration",
+      "name": "Geschätzte Programmdauer abwarten",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [480, -160]
+    },
+    {
+      "parameters": {
+        "fromEmail": "info@energy-leisure.de",
+        "toEmail": "={{$json.customers.email}}",
+        "subject": "Ihre Wäsche ist fertig – Wama-Pay",
+        "emailFormat": "text",
+        "text": "=Hallo {{$json.customers.full_name || ''}},\n\n{{$json.devices?.label}} ({{$json.products?.name}}) sollte jetzt fertig sein.\n\nViele Grüße\nWama-Pay",
+        "options": {}
+      },
+      "id": "send-fertig-email",
+      "name": "\"Maschine fertig\"-Mail senden",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [720, -160],
+      "credentials": {
+        "smtp": { "id": "wama-pay-smtp", "name": "Wama-Pay SMTP" }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "noop-no-customer",
+      "name": "Anonymer Checkout – keine Benachrichtigung möglich",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [-240, 140]
+    },
+    {
+      "parameters": {},
+      "id": "noop-notify-disabled",
+      "name": "Benachrichtigung deaktiviert",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [480, 60]
+    }
+  ],
+  "connections": {
+    "Webhook: Order Released": { "main": [[{ "node": "Order + Produkt laden", "type": "main", "index": 0 }]] },
+    "Order + Produkt laden": { "main": [[{ "node": "Order-Datensatz entpacken", "type": "main", "index": 0 }]] },
+    "Order-Datensatz entpacken": { "main": [[{ "node": "Eingeloggter Kunde?", "type": "main", "index": 0 }]] },
+    "Eingeloggter Kunde?": {
+      "main": [
+        [{ "node": "Benachrichtigungs-Einstellung laden", "type": "main", "index": 0 }],
+        [{ "node": "Anonymer Checkout – keine Benachrichtigung möglich", "type": "main", "index": 0 }]
+      ]
+    },
+    "Benachrichtigungs-Einstellung laden": { "main": [[{ "node": "Order + Einstellung zusammenführen", "type": "main", "index": 0 }]] },
+    "Order + Einstellung zusammenführen": { "main": [[{ "node": "Benachrichtigung gewünscht?", "type": "main", "index": 0 }]] },
+    "Benachrichtigung gewünscht?": {
+      "main": [
+        [{ "node": "Geschätzte Programmdauer abwarten", "type": "main", "index": 0 }],
+        [{ "node": "Benachrichtigung deaktiviert", "type": "main", "index": 0 }]
+      ]
+    },
+    "Geschätzte Programmdauer abwarten": { "main": [[{ "node": "\"Maschine fertig\"-Mail senden", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" }
+}

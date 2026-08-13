@@ -16,7 +16,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{$env.WAMA_PAY_SUPABASE_URL}}/rest/v1/rpc/expire_stale_reservations",
+        "url": "=https://qhnqselrrawmgcrpuazx.supabase.co/rest/v1/rpc/expire_stale_reservations",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={}",

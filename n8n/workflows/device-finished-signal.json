@@ -24,7 +24,7 @@
             {
               "id": "valid-secret",
               "leftValue": "={{$json.headers['x-wama-pay-signal-key']}}",
-              "rightValue": "={{$env.WAMA_PAY_DEVICE_SIGNAL_SECRET}}",
+              "rightValue": "9847cbcf7306a429707b76470879c6f9e771e83be69430535f30da6ff7702353",
               "operator": { "type": "string", "operation": "equals" }
             }
           ],
@@ -41,7 +41,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "={{$env.WAMA_PAY_SUPABASE_URL}}/rest/v1/device_finish_signals",
+        "url": "=https://qhnqselrrawmgcrpuazx.supabase.co/rest/v1/device_finish_signals",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [

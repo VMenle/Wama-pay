@@ -18,7 +18,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "={{$env.WAMA_PAY_SUPABASE_URL}}/rest/v1/orders",
+        "url": "=https://qhnqselrrawmgcrpuazx.supabase.co/rest/v1/orders",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
@@ -57,7 +57,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{$env.WAMA_PAY_SUPABASE_URL}}/rest/v1/device_finish_signals",
+        "url": "=https://qhnqselrrawmgcrpuazx.supabase.co/rest/v1/device_finish_signals",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -104,7 +104,7 @@
     {
       "parameters": {
         "method": "PATCH",
-        "url": "={{$env.WAMA_PAY_SUPABASE_URL}}/rest/v1/devices",
+        "url": "=https://qhnqselrrawmgcrpuazx.supabase.co/rest/v1/devices",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
@@ -136,7 +136,7 @@
     {
       "parameters": {
         "method": "DELETE",
-        "url": "={{$env.WAMA_PAY_SUPABASE_URL}}/rest/v1/device_finish_signals",
+        "url": "=https://qhnqselrrawmgcrpuazx.supabase.co/rest/v1/device_finish_signals",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [

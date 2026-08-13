@@ -7,10 +7,9 @@ providerspezifisch ist"): Beleg-Mail, Erkennung "Waschgang fertig" (Gerät
 wieder freigeben + optionale Benachrichtigung) und das Aufräumen abgelaufener,
 unbezahlter Reservierungen.
 
-Die Edge Function selbst (Task 6, noch offen) ruft die Webhook-Workflows per
-HTTP POST auf, nachdem sie den Order-Status serverseitig geändert hat. Bis
-Task 6 umgesetzt ist, können die Webhooks manuell (z. B. mit curl/Postman)
-gegen Testdaten ausgelöst werden.
+Die Edge Function `payment-webhook` (siehe `supabase/functions/`) ruft die
+Webhook-Workflows per HTTP POST auf, nachdem sie den Order-Status
+serverseitig geändert hat.
 
 ## Workflows
 
@@ -38,33 +37,33 @@ ausbleibt oder gar kein Sensor angeschlossen ist.
 
 ## Setup
 
-1. **Supabase-Zugangsdaten als n8n-Credential anlegen** (nicht im Workflow-JSON,
-   damit kein Secret im Repo landet): In n8n unter *Credentials* einen
-   generischen "Header Auth"-Credential mit Namen
+Die Supabase-URL (`https://qhnqselrrawmgcrpuazx.supabase.co`) und das
+Signal-Secret sind direkt in den vier JSON-Dateien fest eingetragen (keine
+Umgebungsvariablen nötig) -- Setup läuft also komplett über die n8n-
+Weboberfläche, kein Server-/Terminal-Zugriff nötig:
+
+1. **Supabase-Zugangsdaten als n8n-Credential anlegen**: In n8n unter
+   *Credentials* einen generischen "Header Auth"-Credential mit Namen
    **`Supabase Service Role`** anlegen:
    - Header-Name: `apikey` → Wert: der Supabase **Service-Role-Key** (niemals
-     der anon-Key, da die RPCs/REST-Calls hier absichtlich RLS umgehen müssen)
+     der anon-Key, da die RPCs/REST-Calls hier absichtlich RLS umgehen müssen;
+     zu finden im Supabase-Dashboard unter Project Settings → API)
    - Zusätzlich einen zweiten Header `Authorization: Bearer <service-role-key>`
      (falls das genutzte HTTP-Request-Node nur einen Header-Auth-Slot erlaubt,
-     stattdessen zwei "Header Auth"-Credentials verwenden oder die Header
-     direkt im Node unter "Header Parameters" mit einer n8n-Credential-Variable
-     referenzieren).
-   - In allen drei Workflows referenzieren die HTTP-Request-Nodes die Basis-URL
-     über die Umgebungsvariable `SUPABASE_URL` (in n8n unter *Settings →
-     Environment* oder als n8n-Umgebungsvariable `WAMA_PAY_SUPABASE_URL`
-     hinterlegen und die Platzhalter-URL in den Nodes danach anpassen).
+     stattdessen zwei "Header Auth"-Credentials verwenden).
 2. **SMTP-Credential** mit Namen **`Wama-Pay SMTP`** anlegen (Absenderadresse
    z. B. `info@energy-leisure.de`) — wird von den "Send Email"-Nodes genutzt.
-3. **Umgebungsvariable `WAMA_PAY_DEVICE_SIGNAL_SECRET`** in n8n setzen — ein
-   selbst gewähltes, langes Zufalls-Secret. Muss exakt mit `SIGNAL_SECRET` im
-   Shelly-Skript (`shelly/wama-pay-finish-signal.js`) übereinstimmen; schützt
-   den öffentlich erreichbaren `device-finished`-Endpunkt davor, dass beliebige
-   Dritte vorgetäuschte "fertig"-Signale senden.
-4. Alle vier JSON-Dateien in n8n importieren (*Import from File*), die
+3. Alle vier JSON-Dateien in n8n importieren (*Import from File*), die
    Credentials in den jeweiligen Nodes zuweisen, Webhook-Workflows aktivieren
    und die erzeugten Produktions-Webhook-URLs notieren — `order-paid` und
-   `order-released` werden später von der Edge Function `payment-webhook`
-   aufgerufen (Task 6), `device-finished` vom Shelly-Skript.
+   `order-released` werden von der Edge Function `payment-webhook`
+   aufgerufen, `device-finished` vom Shelly-Skript.
+
+Das Signal-Secret (im Node "Signal-Key gültig?" in `device-finished-signal.json`
+sowie in `shelly/wama-pay-finish-signal.js` als `SIGNAL_SECRET`) ist bereits
+in beiden Dateien identisch fest eingetragen -- bei Bedarf (z.B. falls dieses
+Repo öffentlich einsehbar ist) durch einen eigenen Wert ersetzen, dann aber
+an **beiden** Stellen gleichzeitig ändern.
 
 ## Bewusste Design-Entscheidungen
 

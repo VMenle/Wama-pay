@@ -18,7 +18,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "={{$env.WAMA_PAY_SUPABASE_URL}}/rest/v1/orders",
+        "url": "=https://qhnqselrrawmgcrpuazx.supabase.co/rest/v1/orders",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [

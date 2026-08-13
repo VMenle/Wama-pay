@@ -36,10 +36,11 @@ var CONFIG = {
   DEVICE_ID: "REPLACE-WITH-WAMA-PAY-DEVICE-ID",
 
   // Geteiltes Geheimnis, das im Header X-Wama-Pay-Signal-Key mitgeschickt
-  // wird. Muss mit der n8n-Umgebungsvariable WAMA_PAY_DEVICE_SIGNAL_SECRET
-  // übereinstimmen (siehe n8n/README.md). Für jedes Gerät kann derselbe
-  // Wert verwendet werden.
-  SIGNAL_SECRET: "REPLACE-WITH-SHARED-SECRET",
+  // wird. Muss exakt mit dem Wert übereinstimmen, der im n8n-Workflow
+  // "device-finished-signal" im Node "Signal-Key gültig?" hinterlegt ist
+  // (dort fest eingetragen, siehe n8n/README.md). Für jedes Gerät kann
+  // derselbe Wert verwendet werden.
+  SIGNAL_SECRET: "9847cbcf7306a429707b76470879c6f9e771e83be69430535f30da6ff7702353",
 
   // Timeout für den HTTP-Aufruf in Sekunden.
   HTTP_TIMEOUT_S: 10

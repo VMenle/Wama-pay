@@ -84,13 +84,21 @@
       return;
     }
 
-    var todoNotice = document.createElement("div");
-    todoNotice.className = "notice notice-todo";
-    todoNotice.textContent =
-      "TODO (Checkout-Anbindung folgt zuletzt): Die eigentliche Zahlungsauslösung " +
-      "über SumUp läuft über die Edge Function payment-webhook + SumUp-Adapter " +
-      "(siehe docs/payment-provider-adapter.md). Aktuell nur UI-Gerüst, keine echte Zahlung.";
-    root.appendChild(todoNotice);
+    if (isDemo) {
+      var todoNotice = document.createElement("div");
+      todoNotice.className = "notice notice-todo";
+      todoNotice.textContent =
+        "Ohne Supabase-Verbindung kann kein echter Checkout gestartet werden " +
+        "(Edge Functions create-checkout/payment-webhook brauchen eine echte " +
+        "Order in der Datenbank).";
+      root.appendChild(todoNotice);
+    }
+
+    var errorBox = document.createElement("div");
+    errorBox.className = "notice notice-warn";
+    errorBox.style.display = "none";
+    errorBox.id = "checkout-error";
+    root.appendChild(errorBox);
 
     var card = document.createElement("div");
     card.className = "card";
@@ -99,7 +107,7 @@
     directBtn.className = "btn-primary btn-block";
     directBtn.textContent = "Direkt mit SumUp bezahlen (" + formatPrice(device.price_cents, device.currency) + ")";
     directBtn.addEventListener("click", function () {
-      startCheckout(device, "provider");
+      startCheckout(device, "provider", directBtn);
     });
 
     var walletWrap = document.createElement("div");
@@ -110,7 +118,7 @@
       walletBtn.className = "btn-ghost btn-block";
       walletBtn.textContent = "Vom Guthaben bezahlen";
       walletBtn.addEventListener("click", function () {
-        startCheckout(device, "wallet");
+        startCheckout(device, "wallet", walletBtn);
       });
       walletWrap.appendChild(walletBtn);
     } else {
@@ -125,11 +133,37 @@
     root.appendChild(card);
   }
 
-  function startCheckout(device, method) {
-    // TODO: hier wird künftig die Order (Reservierung) über eine Edge
-    // Function angelegt und bei method === 'provider' der SumUp-Checkout
-    // gestartet. Bis dahin nur Weiterleitung zur Verarbeitungs-Ansicht.
-    window.location.href = "verarbeitung.html?device=" + encodeURIComponent(device.id) + "&method=" + method;
+  async function startCheckout(device, method, buttonEl) {
+    var errorBox = document.getElementById("checkout-error");
+    errorBox.style.display = "none";
+    if (buttonEl) buttonEl.disabled = true;
+
+    try {
+      var client = await window.wamaSupabaseReady;
+      var { data, error } = await client.functions.invoke("create-checkout", {
+        body: { device_id: device.id, payment_method: method },
+      });
+
+      if (error) throw error;
+      if (data && data.error) throw new Error(data.error);
+
+      if (data.status === "released") {
+        // Wallet-Zahlung: synchron abgeschlossen, direkt zur Freigabe.
+        window.location.href = "freigabe.html?order=" + encodeURIComponent(data.order_id);
+        return;
+      }
+
+      // Provider-Zahlung (SumUp): weiter zur Verarbeitungs-Ansicht, die den
+      // Order-Status pollt, bis die Zahlung bestätigt und das Gerät
+      // freigegeben wurde.
+      window.location.href = "verarbeitung.html?order=" + encodeURIComponent(data.order_id) +
+        (data.redirect_url ? "&redirect=" + encodeURIComponent(data.redirect_url) : "");
+    } catch (err) {
+      errorBox.textContent = "Zahlung konnte nicht gestartet werden: " + (err.message || "Unbekannter Fehler") +
+        ". Bitte erneut versuchen.";
+      errorBox.style.display = "block";
+      if (buttonEl) buttonEl.disabled = false;
+    }
   }
 
   async function loadDeviceAndAuth() {

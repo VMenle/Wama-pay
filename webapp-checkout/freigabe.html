@@ -26,14 +26,7 @@
 
       <div id="notify-block" class="card" style="text-align:left; margin-bottom:20px;">
         <h3 style="font-size:15px; margin-bottom:6px;">Benachrichtigung, wenn fertig?</h3>
-        <p style="font-size:13.5px; color:var(--ink-soft); margin-bottom:14px;">
-          Analog zu "Wecker aktivieren": Wir informieren Sie automatisch per
-          E-Mail, sobald der Waschgang fertig ist.
-        </p>
-        <div id="notify-login-hint" style="display:none; font-size:13.5px; color:var(--ink-soft);">
-          Nur mit Login verfügbar. <a href="../webapp-customer/index.html" style="color:var(--blue); font-weight:700;">Jetzt anmelden</a>
-        </div>
-        <button id="notify-btn" class="btn-ghost btn-block">Benachrichtigung aktivieren</button>
+        <p id="notify-status" style="font-size:13.5px; color:var(--ink-soft);">Lade Einstellung…</p>
       </div>
 
       <a href="index.html" class="btn-primary btn-block">Zur Geräteübersicht</a>
@@ -44,31 +37,43 @@
 <script src="../assets/config.js"></script>
 <script src="../assets/supabase-client.js"></script>
 <script>
-  // TODO (Checkout-Anbindung folgt zuletzt): "Benachrichtigung aktivieren"
-  // setzt produktiv orders.notify_on_release (bzw. nutzt die Standard-
-  // Einstellung aus customer_notification_settings) für die konkrete Order.
-  // Der n8n-Workflow "Maschine fertig" liest diese Einstellung, bevor er die
-  // Benachrichtigung auslöst. Hier nur UI-Gerüst mit Login-Prüfung.
+  // Die "Maschine fertig"-Benachrichtigung ist eine globale Kontoeinstellung
+  // (customer_notification_settings, siehe webapp-customer/benachrichtigungen.html),
+  // nicht pro Order einzeln aktivierbar -- der n8n-Workflow
+  // "order-released-notify-fertig" liest sie automatisch für jede Order
+  // dieses Kunden. Hier wird nur der aktuelle Stand angezeigt.
+  var statusEl = document.getElementById("notify-status");
+
+  function showLoginHint() {
+    statusEl.innerHTML = 'Nur mit Login verfügbar. <a href="../webapp-customer/index.html" style="color:var(--blue); font-weight:700;">Jetzt anmelden</a>';
+  }
+
   (async function () {
     try {
-      var client = await window.wamaSupabaseReady;
       var cfg = window.WAMA_PAY_CONFIG;
       if (!cfg.supabaseUrl || cfg.supabaseUrl.indexOf("TODO_") === 0) throw new Error("no config");
-      var { data } = await client.auth.getSession();
-      if (!data || !data.session) {
-        document.getElementById("notify-btn").style.display = "none";
-        document.getElementById("notify-login-hint").style.display = "block";
+      var client = await window.wamaSupabaseReady;
+      var { data: sessionData } = await client.auth.getSession();
+      if (!sessionData || !sessionData.session) {
+        showLoginHint();
+        return;
+      }
+
+      var { data: settings } = await client
+        .from("customer_notification_settings")
+        .select("notify_on_release")
+        .eq("customer_id", sessionData.session.user.id)
+        .maybeSingle();
+
+      if (settings && settings.notify_on_release) {
+        statusEl.innerHTML = 'Aktiv – Sie werden per E-Mail benachrichtigt, sobald der Waschgang fertig ist. <a href="../webapp-customer/benachrichtigungen.html" style="color:var(--blue); font-weight:700;">Einstellung ändern</a>';
+      } else {
+        statusEl.innerHTML = 'Deaktiviert. <a href="../webapp-customer/benachrichtigungen.html" style="color:var(--blue); font-weight:700;">Jetzt aktivieren</a>';
       }
     } catch (e) {
-      document.getElementById("notify-btn").style.display = "none";
-      document.getElementById("notify-login-hint").style.display = "block";
+      showLoginHint();
     }
   })();
-
-  document.getElementById("notify-btn").addEventListener("click", function (e) {
-    e.target.textContent = "Benachrichtigung aktiv ✓";
-    e.target.disabled = true;
-  });
 </script>
 
 </body>

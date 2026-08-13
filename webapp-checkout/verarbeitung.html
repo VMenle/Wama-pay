@@ -16,12 +16,9 @@
 
 <main>
   <div class="wrap-narrow">
-    <div class="notice notice-todo" style="max-width:440px; margin:0 auto 20px;">
-      TODO (Checkout-Anbindung folgt zuletzt): Diese Seite simuliert aktuell den
-      Ablauf. Produktiv wird hier der Order-Status per
-      <code>get_order_status(order_id)</code> abgefragt (Polling oder Realtime),
-      bis die Edge Function <code>payment-webhook</code> die Zahlung bestätigt
-      und die Freigabe ausgelöst hat.
+    <div id="redirect-hint" class="notice notice-info" style="max-width:440px; margin:0 auto 20px; display:none;">
+      Sie werden zur Zahlungsseite von SumUp weitergeleitet…
+      <a id="redirect-link" href="#" style="color:var(--blue); font-weight:700;">Nicht automatisch weitergeleitet? Hier klicken.</a>
     </div>
 
     <div class="process-panel">
@@ -34,24 +31,123 @@
         <li id="step-2"><span class="dot"></span> Gerät wird freigeschaltet</li>
         <li id="step-3"><span class="dot"></span> Bereit zur Nutzung</li>
       </ul>
+
+      <div id="error-block" style="display:none; margin-top:20px;">
+        <div class="notice notice-warn" id="error-message"></div>
+        <a href="index.html" class="btn-ghost btn-block">Zurück zur Übersicht</a>
+      </div>
     </div>
   </div>
 </main>
 
+<script src="../assets/config.js"></script>
+<script src="../assets/supabase-client.js"></script>
 <script>
   var params = new URLSearchParams(window.location.search);
-  var deviceId = params.get("device") || "demo-1";
-  var method = params.get("method") || "provider";
+  var orderId = params.get("order");
+  var redirectUrl = params.get("redirect");
+
+  // Sicherheitsnetz: falls create-checkout eine SumUp-Weiterleitungs-URL
+  // geliefert hat (gehostete Zahlungsseite), dorthin schicken. Aktuell
+  // liefert der SumUp-Adapter noch keine redirect_url (TODO, siehe
+  // supabase/functions/_shared/sumupAdapter.ts) -- dieser Zweig greift also
+  // erst, sobald das ergänzt ist.
+  if (redirectUrl) {
+    document.getElementById("redirect-hint").style.display = "block";
+    var link = document.getElementById("redirect-link");
+    link.href = redirectUrl;
+    setTimeout(function () { window.location.href = redirectUrl; }, 1500);
+  }
 
   function markDone(id) { document.getElementById(id).classList.add("done"); }
 
-  // Demo-Ablaufsimulation (kein echter Zahlungsvorgang).
-  setTimeout(function () { markDone("step-1"); }, 900);
-  setTimeout(function () { markDone("step-2"); }, 1800);
-  setTimeout(function () {
-    markDone("step-3");
-    window.location.href = "freigabe.html?device=" + encodeURIComponent(deviceId) + "&method=" + encodeURIComponent(method);
-  }, 2600);
+  function showError(message) {
+    document.getElementById("spinner").style.display = "none";
+    document.getElementById("process-title").textContent = "Zahlung nicht erfolgreich";
+    document.getElementById("process-subtitle").style.display = "none";
+    document.getElementById("error-message").textContent = message;
+    document.getElementById("error-block").style.display = "block";
+  }
+
+  function applyStatus(status) {
+    if (status === "reserved" || status === "payment_pending") {
+      // noch nichts abgeschlossen, weiter warten
+      return "pending";
+    }
+    if (status === "paid") {
+      markDone("step-1");
+      return "pending";
+    }
+    if (status === "released") {
+      markDone("step-1");
+      markDone("step-2");
+      markDone("step-3");
+      return "done";
+    }
+    if (status === "failed" || status === "expired") {
+      showError(
+        status === "expired"
+          ? "Das Zeitfenster für die Zahlung ist abgelaufen. Bitte erneut versuchen."
+          : "Die Zahlung ist fehlgeschlagen oder wurde abgebrochen."
+      );
+      return "failed";
+    }
+    return "pending";
+  }
+
+  var POLL_INTERVAL_MS = 1500;
+  var MAX_POLLS = 80; // ~2 Minuten
+  var pollCount = 0;
+
+  async function pollOrderStatus() {
+    if (!orderId) {
+      showError("Keine Order angegeben.");
+      return;
+    }
+
+    var cfg = window.WAMA_PAY_CONFIG;
+    if (!cfg.supabaseUrl || cfg.supabaseUrl.indexOf("TODO_") === 0) {
+      showError("Supabase ist noch nicht konfiguriert (siehe assets/config.js) – Order-Status kann nicht abgefragt werden.");
+      return;
+    }
+
+    var client = await window.wamaSupabaseReady;
+
+    var poll = async function () {
+      pollCount++;
+      var { data, error } = await client.rpc("get_order_status", { p_order_id: orderId });
+
+      if (error) {
+        showError("Order-Status konnte nicht abgerufen werden: " + error.message);
+        return;
+      }
+
+      var row = Array.isArray(data) ? data[0] : data;
+      if (!row) {
+        showError("Order nicht gefunden.");
+        return;
+      }
+
+      var outcome = applyStatus(row.status);
+
+      if (outcome === "done") {
+        window.location.href = "freigabe.html?order=" + encodeURIComponent(orderId);
+        return;
+      }
+      if (outcome === "failed") {
+        return; // showError() wurde bereits aufgerufen
+      }
+      if (pollCount >= MAX_POLLS) {
+        showError("Die Zahlung konnte nicht rechtzeitig bestätigt werden. Bitte prüfen Sie den Status später erneut oder wenden Sie sich an den Support.");
+        return;
+      }
+      setTimeout(poll, POLL_INTERVAL_MS);
+    };
+
+    poll();
+  }
+
+  pollOrderStatus();
 </script>
 
 </body>

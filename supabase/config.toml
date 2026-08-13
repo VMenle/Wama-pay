@@ -1,0 +1,18 @@
+# Wama-Pay – Supabase-Projektkonfiguration (für `supabase` CLI).
+#
+# payment-webhook wird direkt von SumUp aufgerufen, nicht über supabase-js --
+# es liegt also kein gültiges Supabase-JWT im Authorization-Header vor. Die
+# Standardprüfung der Edge-Function-Laufzeit (verify_jwt = true) würde den
+# Request deshalb schon vor Erreichen unseres Codes mit 401 ablehnen.
+# Die eigentliche Authentizitätsprüfung übernimmt stattdessen der SumUp-
+# Adapter selbst (geteiltes Secret, siehe
+# supabase/functions/_shared/sumupAdapter.ts::verifyWebhookRequest).
+[functions.payment-webhook]
+verify_jwt = false
+
+# create-checkout wird ausschließlich über supabase-js (client.functions.invoke)
+# aus der Checkout-Webapp aufgerufen, die immer mindestens den anon-Key als
+# JWT mitschickt (bei eingeloggten Kunden das User-JWT) -- Standardprüfung
+# bleibt hier aktiv.
+[functions.create-checkout]
+verify_jwt = true

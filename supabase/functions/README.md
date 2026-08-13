@@ -21,6 +21,26 @@ https://<project-ref>.functions.supabase.co/payment-webhook?provider=sumup
 
 ## Deployment
 
+### Ohne lokale CLI-Installation (empfohlen)
+
+`.github/workflows/deploy-edge-functions.yml` deployt beide Functions
+automatisch bei jedem Push nach `main`, der `supabase/functions/**` ändert
+(oder manuell über den "Run workflow"-Button im GitHub-Actions-Tab). Läuft
+komplett bei GitHub, keine lokale Installation nötig. Dafür einmalig zwei
+Repository-Secrets setzen (GitHub -> Repo -> **Settings** -> **Secrets and
+variables** -> **Actions** -> **New repository secret**):
+
+| Name | Wert | Woher |
+|---|---|---|
+| `SUPABASE_ACCESS_TOKEN` | persönlicher Zugriffstoken | Supabase-Dashboard -> Account-Icon oben rechts -> **Access Tokens** -> **Generate new token** |
+| `SUPABASE_PROJECT_ID` | Projekt-Referenz (z.B. `qhnqselrrawmgcrpuazx`) | steht in der Projekt-URL, siehe auch `assets/config.js` |
+
+**Wichtig:** Diesen Zugriffstoken niemals in einen Chat/eine Konversation
+einfügen -- direkt in den GitHub-Secrets-Dialog eintragen, der Wert bleibt
+dort verschlüsselt und für niemanden mehr einsehbar.
+
+### Mit lokaler CLI (alternativ)
+
 ```bash
 supabase functions deploy create-checkout
 supabase functions deploy payment-webhook
@@ -30,18 +50,38 @@ supabase functions deploy payment-webhook
 schickt kein Supabase-JWT mit) -- die Authentizitätsprüfung übernimmt dort
 stattdessen das geteilte Webhook-Secret im SumUp-Adapter.
 
-## Benötigte Secrets
+## Benötigte Secrets (Function-Umgebungsvariablen)
+
+Diese sind etwas anderes als die beiden GitHub-Repository-Secrets oben --
+das hier sind die Secrets, mit denen die Functions selbst laufen (SumUp-
+Zugangsdaten etc.).
+
+**Ohne CLI:** Supabase-Dashboard -> **Edge Functions** -> **Secrets** (bzw.
+**Manage secrets**) -> dort die folgenden Namen/Werte eintragen:
+
+| Name | Beschreibung |
+|---|---|
+| `SUMUP_API_KEY` | SumUp-API-Schlüssel |
+| `SUMUP_MERCHANT_CODE` | SumUp-Merchant-Code |
+| `SUMUP_WEBHOOK_SHARED_SECRET` | selbst gewähltes, langes Zufalls-Secret |
+| `WAMA_PAY_N8N_BASE_URL` | z.B. `https://<n8n-host>/webhook` |
+| `WAMA_PAY_ALLOWED_ORIGIN` | Domain der Checkout-Webapp |
+
+**Mit CLI (alternativ):**
 
 ```bash
 supabase secrets set SUMUP_API_KEY=...
 supabase secrets set SUMUP_MERCHANT_CODE=...
-supabase secrets set SUMUP_WEBHOOK_SHARED_SECRET=...   # selbst gewähltes, langes Zufalls-Secret
+supabase secrets set SUMUP_WEBHOOK_SHARED_SECRET=...
 supabase secrets set WAMA_PAY_N8N_BASE_URL=https://<n8n-host>/webhook
 supabase secrets set WAMA_PAY_ALLOWED_ORIGIN=https://<checkout-webapp-domain>
 ```
 
 `SUPABASE_URL` und `SUPABASE_SERVICE_ROLE_KEY` werden von der Supabase-
 Laufzeit automatisch bereitgestellt, dafür ist kein manuelles Setzen nötig.
+Diese Secrets sind unabhängig von SumUp erforderlich -- solange
+`SUMUP_API_KEY`/`SUMUP_MERCHANT_CODE` fehlen, funktioniert nur die
+Wallet-Zahlung, nicht die Kartenzahlung.
 
 Beim Einrichten der Webhook-URL im SumUp-Dashboard muss
 `SUMUP_WEBHOOK_SHARED_SECRET` als Header `X-Wama-Pay-Webhook-Token` mit

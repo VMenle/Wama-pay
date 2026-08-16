@@ -16,9 +16,10 @@
 
 <main>
   <div class="wrap-narrow">
-    <div id="redirect-hint" class="notice notice-info" style="max-width:440px; margin:0 auto 20px; display:none;">
-      Sie werden zur Zahlungsseite von SumUp weitergeleitet…
-      <a id="redirect-link" href="#" style="color:var(--blue); font-weight:700;">Nicht automatisch weitergeleitet? Hier klicken.</a>
+    <div id="redirect-hint" class="notice notice-info" style="max-width:440px; margin:0 auto 20px; display:none; text-align:center;">
+      <p style="margin-bottom:14px;">Zum Bezahlen entweder direkt weiter zur SumUp-Zahlungsseite, oder den QR-Code mit einem anderen Gerät scannen:</p>
+      <div id="qr-container" style="display:flex; justify-content:center; margin-bottom:14px;"></div>
+      <a id="redirect-link" href="#" class="btn-primary" style="display:inline-block;">Jetzt bei SumUp bezahlen</a>
     </div>
 
     <div class="process-panel">
@@ -42,21 +43,22 @@
 
 <script src="../assets/config.js"></script>
 <script src="../assets/supabase-client.js"></script>
+<script src="../assets/qrcode-client.js"></script>
 <script>
   var params = new URLSearchParams(window.location.search);
   var orderId = params.get("order");
   var redirectUrl = params.get("redirect");
 
-  // Sicherheitsnetz: falls create-checkout eine SumUp-Weiterleitungs-URL
-  // geliefert hat (gehostete Zahlungsseite), dorthin schicken. Aktuell
-  // liefert der SumUp-Adapter noch keine redirect_url (TODO, siehe
-  // supabase/functions/_shared/sumupAdapter.ts) -- dieser Zweig greift also
-  // erst, sobald das ergänzt ist.
+  // create-checkout liefert bei SumUp-Zahlung eine hosted_checkout_url
+  // (SumUps eigene Zahlungsseite). Wir zeigen sie als Link UND als QR-Code:
+  // Link, falls dieses Gerät selbst das Kunden-Handy ist; QR-Code, falls
+  // bezahlen.html z.B. auf einem fest montierten Bildschirm/Tablet neben
+  // der Maschine läuft und der Kunde mit seinem eigenen Handy scannt.
   if (redirectUrl) {
     document.getElementById("redirect-hint").style.display = "block";
     var link = document.getElementById("redirect-link");
     link.href = redirectUrl;
-    setTimeout(function () { window.location.href = redirectUrl; }, 1500);
+    window.wamaRenderQrCode("qr-container", redirectUrl);
   }
 
   function markDone(id) { document.getElementById(id).classList.add("done"); }

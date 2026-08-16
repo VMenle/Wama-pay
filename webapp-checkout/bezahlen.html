@@ -105,7 +105,7 @@
 
     var directBtn = document.createElement("button");
     directBtn.className = "btn-primary btn-block";
-    directBtn.textContent = "Direkt mit SumUp bezahlen (" + formatPrice(device.price_cents, device.currency) + ")";
+    directBtn.textContent = "Mit SumUp bezahlen – Link/QR-Code (" + formatPrice(device.price_cents, device.currency) + ")";
     directBtn.addEventListener("click", function () {
       startCheckout(device, "provider", directBtn);
     });

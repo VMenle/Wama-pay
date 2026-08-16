@@ -6,17 +6,22 @@ Reserviert ein Gerät und legt eine Order an. Wird von
 `webapp-checkout/bezahlen.html` über `supabase.functions.invoke("create-checkout", ...)`
 aufgerufen. Bei `payment_method: "wallet"` läuft die Zahlung synchron
 (Guthaben-Abbuchung + sofortige Freigabe), bei `"provider"` wird eine
-SumUp-Checkout-Session erstellt und die Bestätigung kommt asynchron über
-`payment-webhook`.
+SumUp-**Hosted-Checkout**-Session erstellt: SumUp stellt eine eigene
+Zahlungsseite bereit, wir zeigen dem Kunden nur einen Link + QR-Code dorthin
+(siehe `verarbeitung.html`) -- keine Kartendaten berühren unseren Server.
+Die Zahlungsbestätigung kommt asynchron über `payment-webhook`.
 
 ## payment-webhook
 
 Providerunabhängiger Webhook-Einstiegspunkt (siehe
-`docs/payment-provider-adapter.md`). SumUp muss im SumUp-Dashboard auf
-folgende URL konfiguriert werden:
+`docs/payment-provider-adapter.md`). Anders als bei vielen anderen Anbietern
+gibt es bei SumUp **keine einmalige globale Webhook-URL-Konfiguration im
+Dashboard** -- die Ziel-URL wird stattdessen bei **jeder einzelnen**
+Checkout-Erstellung als `return_url` mitgeschickt (macht `create-checkout`
+bereits automatisch, siehe `_shared/sumupAdapter.ts`):
 
 ```
-https://<project-ref>.functions.supabase.co/payment-webhook?provider=sumup
+https://<project-ref>.supabase.co/functions/v1/payment-webhook?provider=sumup
 ```
 
 ## Deployment
@@ -48,7 +53,7 @@ supabase functions deploy payment-webhook
 
 `supabase/config.toml` setzt `verify_jwt = false` für `payment-webhook` (SumUp
 schickt kein Supabase-JWT mit) -- die Authentizitätsprüfung übernimmt dort
-stattdessen das geteilte Webhook-Secret im SumUp-Adapter.
+stattdessen die HMAC-SHA256-Webhook-Signatur im SumUp-Adapter.
 
 ## Benötigte Secrets (Function-Umgebungsvariablen)
 
@@ -63,16 +68,18 @@ Zugangsdaten etc.).
 |---|---|
 | `SUMUP_API_KEY` | SumUp-API-Schlüssel |
 | `SUMUP_MERCHANT_CODE` | SumUp-Merchant-Code |
-| `SUMUP_WEBHOOK_SHARED_SECRET` | selbst gewähltes, langes Zufalls-Secret |
+| `SUMUP_WEBHOOK_SIGNING_SECRET` | Signing-Secret aus dem SumUp-Dashboard (für die HMAC-SHA256-Webhook-Signaturprüfung, Header `x-payload-signature`) |
+| `WAMA_PAY_CHECKOUT_BASE_URL` | Basis-URL der Checkout-Webapp, z.B. `https://vmenle.github.io/wama-pay/webapp-checkout` (wird für die Rückleitungs-URL nach der SumUp-Zahlung gebraucht) |
 | `WAMA_PAY_N8N_BASE_URL` | z.B. `https://<n8n-host>/webhook` |
-| `WAMA_PAY_ALLOWED_ORIGIN` | Domain der Checkout-Webapp |
+| `WAMA_PAY_ALLOWED_ORIGIN` | Domain der Checkout-Webapp (für CORS) |
 
 **Mit CLI (alternativ):**
 
 ```bash
 supabase secrets set SUMUP_API_KEY=...
 supabase secrets set SUMUP_MERCHANT_CODE=...
-supabase secrets set SUMUP_WEBHOOK_SHARED_SECRET=...
+supabase secrets set SUMUP_WEBHOOK_SIGNING_SECRET=...
+supabase secrets set WAMA_PAY_CHECKOUT_BASE_URL=https://vmenle.github.io/wama-pay/webapp-checkout
 supabase secrets set WAMA_PAY_N8N_BASE_URL=https://<n8n-host>/webhook
 supabase secrets set WAMA_PAY_ALLOWED_ORIGIN=https://<checkout-webapp-domain>
 ```
@@ -83,23 +90,48 @@ Diese Secrets sind unabhängig von SumUp erforderlich -- solange
 `SUMUP_API_KEY`/`SUMUP_MERCHANT_CODE` fehlen, funktioniert nur die
 Wallet-Zahlung, nicht die Kartenzahlung.
 
-Beim Einrichten der Webhook-URL im SumUp-Dashboard muss
-`SUMUP_WEBHOOK_SHARED_SECRET` als Header `X-Wama-Pay-Webhook-Token` mit
-jedem Webhook-Aufruf mitgeschickt werden -- falls SumUp das nicht direkt als
-konfigurierbaren Header unterstützt, ersatzweise als Query-Parameter an die
-Webhook-URL anhängen und `sumupAdapter.ts::verifyWebhookRequest` entsprechend
-anpassen (TODO, siehe Kommentar dort -- **nicht gegen echtes SumUp-Dashboard
-verifiziert**, siehe Hinweis in `_shared/sumupAdapter.ts`).
+**Wo kommt das Webhook-Signing-Secret her?** SumUp erzeugt/zeigt dieses
+Secret im Dashboard beim Einrichten der Webhook-Benachrichtigung für einen
+Merchant (nicht pro einzelnem Checkout). Genauer Ort im Dashboard war zum
+Zeitpunkt der Recherche nicht mit letzter Sicherheit zu verifizieren (siehe
+Hinweis unten) -- im Zweifel im SumUp-Dashboard unter "Entwickler"/"API"/
+"Webhooks" suchen oder den SumUp-Support fragen.
+
+## Wie die SumUp-Anbindung funktioniert (Hosted Checkout)
+
+Recherchiert gegen die offizielle SumUp-Entwicklerdokumentation
+([Hosted Checkout](https://developer.sumup.com/online-payments/checkouts/hosted-checkout),
+[Webhooks](https://developer.sumup.com/online-payments/webhooks)):
+
+1. `create-checkout` erstellt bei SumUp einen Checkout mit
+   `hosted_checkout.enabled = true`. Die Antwort enthält `hosted_checkout_url`
+   (SumUps eigene Zahlungsseite, Format z.B.
+   `https://checkout.sumup.com/pay/<id>`, 30 Minuten gültig) -- die zeigen
+   wir dem Kunden als Link **und** als QR-Code (`verarbeitung.html`).
+2. `return_url` (im Request an SumUp, server-seitig) wird auf unsere eigene
+   `payment-webhook`-URL gesetzt -- **ohne dieses Feld sendet SumUp gar
+   keinen Webhook**. `redirect_url` ist davon getrennt: die
+   Browser-Rückleitung des Kunden nach der Zahlung auf SumUps Seite, zurück
+   zu `verarbeitung.html`.
+3. Der Webhook-Body selbst gilt nicht als vertrauenswürdig für den
+   Zahlungsstatus -- `payment-webhook` holt sich den tatsächlichen Status
+   immer per GET direkt von SumUp (`resolveWebhookPayload`).
+4. Die Webhook-Authentizität wird per echter HMAC-SHA256-Signaturprüfung
+   sichergestellt (Header `x-payload-signature`), nicht mehr über ein
+   Platzhalter-Secret.
+5. Offizielle SumUp-Status-Werte für einen Checkout: `PENDING`, `EXPIRED`,
+   `SUCCESSFUL` (nicht `PAID`/`FAILED`, wie in einer früheren Fassung dieses
+   Adapters fälschlich angenommen).
 
 ## Bekannte offene Punkte (vor Produktivgang zu prüfen)
 
-- **SumUp-Checkout-UX:** `sumupAdapter.createCheckout` liefert aktuell keine
-  `redirectUrl` zurück. Es muss geklärt werden, ob SumUp eine gehostete
-  Zahlungsseite (Redirect) oder ein einbettbares Card-Widget mit der
-  Checkout-Id bereitstellt, und `verarbeitung.html`/der Adapter entsprechend
-  ergänzt werden -- ohne das fehlt aktuell die eigentliche Karteneingabe-UI.
-- **Webhook-Signatur:** siehe oben, Shared-Secret-Mechanismus ist ein
-  Platzhalter-Ansatz, keine kryptographische Signaturprüfung. Falls SumUp
-  echte Signaturen anbietet, `verifyWebhookRequest` darauf umstellen.
-- Alle SumUp-API-Aufrufe folgen der öffentlich dokumentierten REST-API v0.1,
-  wurden aber mangels Sandbox-Zugang nicht gegen die echte API getestet.
+- Trotz Recherche gegen die offizielle Doku mangels SumUp-Sandbox-Zugang
+  **nicht gegen die echte API getestet** -- vor dem ersten echten Zahlungs-
+  test insbesondere prüfen: exakter Ort/Name des Webhook-Signing-Secrets im
+  Dashboard, ob `hosted_checkout.enabled` für den konkreten SumUp-Account/
+  -Vertrag verfügbar ist.
+- **PayPal als Ausweichlösung:** Falls sich SumUp Hosted Checkout für den
+  vorhandenen Account nicht eignet, ist PayPal als zweiter Provider über
+  dieselbe `PaymentProviderAdapter`-Abstraktion nachrüstbar (neue Zeile in
+  `payment_providers` + neues `paypalAdapter.ts`, ohne Schema-Änderung) --
+  noch nicht umgesetzt, nur vorbereitet.

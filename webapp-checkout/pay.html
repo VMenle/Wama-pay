@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bezahlen – Wama-Pay</title>
+<link rel="stylesheet" href="../assets/shared.css">
+</head>
+<body>
+
+<!--
+  Wama-Pay – fester QR-Code-Einstiegspunkt (SumUp).
+
+  Diese Seite ist bewusst für einen DAUERHAFT am Gerät angebrachten,
+  gedruckten QR-Code gedacht: der Link/QR selbst ändert sich nie
+  (webapp-checkout/pay.html?device=<devices.id>), erzeugt aber bei jedem
+  Aufruf im Hintergrund automatisch eine frische SumUp-Zahlungssession
+  für genau dieses Gerät und leitet sofort dorthin weiter -- kein manueller
+  Auswahlschritt wie in bezahlen.html. Damit lässt sich der 30-Minuten-
+  Ablauf einer einzelnen Hosted-Checkout-Session umgehen, ohne dass der
+  Betreiber je einen neuen QR-Code drucken muss.
+
+  QR-Code für dieses Gerät erzeugen: einfach einen QR-Code-Generator auf
+  genau diese URL zeigen lassen, z.B.
+  https://vmenle.github.io/wama-pay/webapp-checkout/pay.html?device=<devices.id>
+-->
+
+<header class="app-header">
+  <div class="app-navbar">
+    <a href="index.html" class="app-brand"><span class="app-brand-mark"></span>Wama-Pay</a>
+  </div>
+</header>
+
+<main>
+  <div class="wrap-narrow">
+    <div class="process-panel">
+      <div class="process-spinner" id="spinner"></div>
+      <h1 id="title" style="font-size:20px; margin-bottom:8px;">Zahlung wird vorbereitet…</h1>
+      <p id="subtitle" style="color:var(--ink-soft); font-size:14px;">Sie werden gleich zur SumUp-Zahlungsseite weitergeleitet.</p>
+
+      <div id="error-block" style="display:none; margin-top:20px;">
+        <div class="notice notice-warn" id="error-message"></div>
+        <a href="index.html" class="btn-ghost btn-block">Zurück zur Übersicht</a>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="../assets/config.js"></script>
+<script src="../assets/supabase-client.js"></script>
+<script>
+  var params = new URLSearchParams(window.location.search);
+  var deviceId = params.get("device");
+
+  function showError(message) {
+    document.getElementById("spinner").style.display = "none";
+    document.getElementById("title").textContent = "Zahlung konnte nicht gestartet werden";
+    document.getElementById("subtitle").style.display = "none";
+    document.getElementById("error-message").textContent = message;
+    document.getElementById("error-block").style.display = "block";
+  }
+
+  async function startAutoCheckout() {
+    if (!deviceId) {
+      showError("Kein Gerät angegeben. Bitte den QR-Code am Gerät erneut scannen.");
+      return;
+    }
+
+    var cfg = window.WAMA_PAY_CONFIG;
+    if (!cfg.supabaseUrl || cfg.supabaseUrl.indexOf("TODO_") === 0) {
+      showError("Supabase ist noch nicht konfiguriert (siehe assets/config.js).");
+      return;
+    }
+
+    try {
+      var client = await window.wamaSupabaseReady;
+      var { data, error } = await client.functions.invoke("create-checkout", {
+        body: { device_id: deviceId, payment_method: "provider" },
+      });
+
+      if (error) throw error;
+      if (data && data.error) {
+        if (data.error === "device_not_available") {
+          showError("Dieses Gerät ist gerade nicht frei. Bitte versuchen Sie es später erneut.");
+        } else {
+          throw new Error(data.error);
+        }
+        return;
+      }
+      if (!data.redirect_url) {
+        throw new Error("Keine Zahlungsseite erhalten.");
+      }
+
+      window.location.replace(data.redirect_url);
+    } catch (err) {
+      showError("Es ist ein Fehler aufgetreten: " + (err.message || "Unbekannter Fehler") + ". Bitte erneut versuchen.");
+    }
+  }
+
+  startAutoCheckout();
+</script>
+
+</body>
+</html>

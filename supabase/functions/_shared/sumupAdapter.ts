@@ -167,7 +167,8 @@ export const sumupAdapter: PaymentProviderAdapter = {
     const checkout = await sumupRequest(`/v0.1/checkouts/${checkoutId}`, { method: "GET" });
 
     return {
-      orderRef: String(checkout.checkout_reference ?? checkoutId),
+      mode: "confirm_existing_order",
+      ref: String(checkout.checkout_reference ?? checkoutId),
       status: mapSumupStatus(checkout.status),
       amountCents: Math.round(Number(checkout.amount ?? 0) * 100),
       currency: String(checkout.currency ?? "EUR"),

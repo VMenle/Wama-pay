@@ -11,18 +11,40 @@ Zahlungsseite bereit, wir zeigen dem Kunden nur einen Link + QR-Code dorthin
 (siehe `verarbeitung.html`) -- keine Kartendaten berühren unseren Server.
 Die Zahlungsbestätigung kommt asynchron über `payment-webhook`.
 
+## pay.html (fest aufgehängter QR-Code)
+
+`webapp-checkout/pay.html?device=<devices.id>` ist der Ziel-Link für einen
+**dauerhaft am Gerät angebrachten, gedruckten** SumUp-QR-Code (im
+Unterschied zu `bezahlen.html`, wo der Kunde erst ein Gerät und eine
+Zahlweise auswählt). Der Link/QR-Code selbst ändert sich nie -- die Seite
+ruft bei jedem Aufruf automatisch `create-checkout` auf und leitet sofort
+zur frisch erzeugten SumUp-Zahlungsseite weiter. Löst damit das Problem,
+dass eine einzelne Hosted-Checkout-Session nur 30 Minuten gültig ist, ohne
+dass je ein neuer QR-Code gedruckt werden müsste.
+
 ## payment-webhook
 
 Providerunabhängiger Webhook-Einstiegspunkt (siehe
-`docs/payment-provider-adapter.md`). Anders als bei vielen anderen Anbietern
-gibt es bei SumUp **keine einmalige globale Webhook-URL-Konfiguration im
-Dashboard** -- die Ziel-URL wird stattdessen bei **jeder einzelnen**
-Checkout-Erstellung als `return_url` mitgeschickt (macht `create-checkout`
-bereits automatisch, siehe `_shared/sumupAdapter.ts`):
+`docs/payment-provider-adapter.md`), bedient sowohl SumUp als auch PayPal
+über denselben Endpunkt (`?provider=`-Query-Parameter entscheidet, welcher
+Adapter greift):
 
 ```
 https://<project-ref>.supabase.co/functions/v1/payment-webhook?provider=sumup
+https://<project-ref>.supabase.co/functions/v1/payment-webhook?provider=paypal
 ```
+
+**SumUp:** keine einmalige globale Webhook-URL-Konfiguration im Dashboard --
+die Ziel-URL wird stattdessen bei **jeder einzelnen** Checkout-Erstellung
+als `return_url` mitgeschickt (macht `create-checkout` bereits automatisch,
+siehe `_shared/sumupAdapter.ts`). Bestätigt eine von uns vorher angelegte
+Order (`UnifiedWebhookMode = "confirm_existing_order"`).
+
+**PayPal:** läuft komplett anders -- kein API-Aufruf unsererseits, sondern
+ein statisch am Gerät angebrachter PayPal-Payment-Button/QR-Code (siehe
+Abschnitt weiter unten). Da es dafür keine vorherige Order gibt
+(`UnifiedWebhookMode = "create_order_for_device"`), wird sie erst beim
+Zahlungseingang rückwirkend angelegt (`orderLifecycle.ts::createAndReleaseOrderForDevice`).
 
 ## Deployment
 
@@ -123,6 +145,42 @@ Recherchiert gegen die offizielle SumUp-Entwicklerdokumentation
    `SUCCESSFUL` (nicht `PAID`/`FAILED`, wie in einer früheren Fassung dieses
    Adapters fälschlich angenommen).
 
+## Wie die PayPal-Anbindung funktioniert (statischer Payment-Button + IPN)
+
+Anders als SumUp läuft PayPal **nicht** über die Webapp/`create-checkout`,
+sondern über einen einmalig im PayPal-Business-Account angelegten,
+dauerhaft am Gerät angebrachten **Payment Button** (mit QR-Code):
+
+1. Im PayPal-Business-Account einen Payment Button pro Gerät anlegen, dabei:
+   - **Betrag fest** auf den Preis des jeweiligen Geräts einstellen
+   - Verstecktes Feld **`custom`** (oder `item_number`) auf die Wama-Pay
+     `devices.id` **dieser** Maschine setzen -- darüber ordnen wir die
+     eingehende Zahlung dem richtigen Gerät zu
+   - Unter Account-Einstellungen -> **"Instant Payment Notifications"** die
+     Benachrichtigungs-URL auf `.../payment-webhook?provider=paypal` setzen
+   - QR-Code für den Button erzeugen (PayPal bietet das direkt an), drucken,
+     am Gerät anbringen
+2. Kunde scannt, bezahlt direkt auf PayPals Seite -- unser Server ist an
+   diesem Schritt gar nicht beteiligt.
+3. PayPal schickt danach eine klassische **IPN** (POST,
+   `application/x-www-form-urlencoded`) an `payment-webhook?provider=paypal`.
+4. Authentizität wird über PayPals offiziellen Postback-Mechanismus geprüft
+   (Body unverändert + `cmd=_notify-validate` zurück an PayPal senden,
+   Antwort muss `VERIFIED` sein) -- kein API-Key/Secret nötig.
+5. Da es für diese Zahlung keine vorherige Order gibt, wird sie jetzt erst
+   angelegt (Status direkt `paid`) und das Gerät freigegeben -- sofern es
+   gerade frei ist. Ist es belegt, wird die Zahlung trotzdem verbucht
+   (Geld ist geflossen), aber **nicht** freigegeben -- das braucht manuelle
+   Nachbearbeitung (siehe `audit_log`-Eintrag `order.paid_but_device_busy`).
+6. Idempotenz (falls PayPal dieselbe IPN mehrfach zustellt, was laut
+   PayPal-Doku vorkommen kann) läuft über die eindeutige `txn_id` als
+   `orders.provider_ref` (nutzt die bestehende
+   `orders_provider_ref_unique_idx`, keine Schema-Änderung nötig).
+
+**Keine Secrets nötig** für die PayPal-Anbindung selbst (IPN-Verifikation
+braucht keinen API-Key) -- nur die korrekte Einrichtung des Payment Buttons
+im PayPal-Dashboard.
+
 ## Bekannte offene Punkte (vor Produktivgang zu prüfen)
 
 - Trotz Recherche gegen die offizielle Doku mangels SumUp-Sandbox-Zugang
@@ -130,8 +188,15 @@ Recherchiert gegen die offizielle SumUp-Entwicklerdokumentation
   test insbesondere prüfen: exakter Ort/Name des Webhook-Signing-Secrets im
   Dashboard, ob `hosted_checkout.enabled` für den konkreten SumUp-Account/
   -Vertrag verfügbar ist.
-- **PayPal als Ausweichlösung:** Falls sich SumUp Hosted Checkout für den
-  vorhandenen Account nicht eignet, ist PayPal als zweiter Provider über
-  dieselbe `PaymentProviderAdapter`-Abstraktion nachrüstbar (neue Zeile in
-  `payment_providers` + neues `paypalAdapter.ts`, ohne Schema-Änderung) --
-  noch nicht umgesetzt, nur vorbereitet.
+- PayPal-Anbindung ebenfalls **nicht gegen einen echten Payment Button
+  getestet** (kein PayPal-Account-Zugang) -- vor Produktivgang unbedingt
+  einmal mit einem echten Testbetrag durchspielen, insbesondere: kommt das
+  `custom`-Feld tatsächlich unverändert in der IPN an, funktioniert die
+  Postback-Verifikation wie erwartet.
+- Race Condition beim PayPal-Weg: zahlen theoretisch zwei Kunden kurz
+  hintereinander auf denselben Button, während das Gerät noch frei ist,
+  gewinnt nur die zuerst verarbeitete Zahlung die Geräte-Freigabe: der
+  zweite Zahlungseingang wird als `paid_device_busy` verbucht (Geld korrekt
+  vereinnahmt, aber keine zweite Freigabe) und braucht manuelle
+  Nachbearbeitung -- ein prinzipbedingter Kompromiss des reservierungslosen
+  statischen QR-Modells.

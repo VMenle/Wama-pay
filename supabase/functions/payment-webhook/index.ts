@@ -4,16 +4,25 @@
 // docs/payment-provider-adapter.md). Welcher Adapter genutzt wird, steuert
 // der Query-Parameter "provider" in der beim Provider hinterlegten
 // Webhook-URL, z.B.:
-//   https://<project-ref>.functions.supabase.co/payment-webhook?provider=sumup
+//   https://<project-ref>.supabase.co/functions/v1/payment-webhook?provider=sumup
+//   https://<project-ref>.supabase.co/functions/v1/payment-webhook?provider=paypal
 //
-// Ablauf: Signatur/Secret prüfen -> autoritativen Zahlungsstatus beim
-// Provider abrufen (niemals dem Webhook-Body selbst vertrauen) -> Order
-// idempotent auf 'paid'/'released'/'failed' überführen -> n8n-Folgeaufgaben
+// Zwei grundverschiedene Abläufe (siehe UnifiedWebhookMode in
+// _shared/paymentProviderAdapter.ts):
+//   - "confirm_existing_order" (SumUp): create-checkout hat die Order
+//     bereits vorher angelegt, hier wird sie nur noch bestätigt/freigegeben.
+//   - "create_order_for_device" (PayPal): statisches Zahlungsmittel direkt
+//     am Gerät, keine vorherige Order -- wird beim Zahlungseingang
+//     rückwirkend angelegt.
+//
+// In beiden Fällen gilt: Signatur/Secret prüfen -> autoritativen
+// Zahlungsstatus (niemals dem Webhook-Body selbst vertrauen, siehe
+// jeweiligen Adapter) -> Order idempotent überführen -> n8n-Folgeaufgaben
 // anstoßen (Beleg-Mail, "Maschine fertig"-Wächter).
 import { jsonResponse } from "../_shared/cors.ts";
 import { createSupabaseAdminClient } from "../_shared/supabaseAdmin.ts";
 import { PROVIDER_ADAPTERS } from "../_shared/paymentProviderAdapter.ts";
-import { markOrderFailed, markOrderPaid, releaseOrder } from "../_shared/orderLifecycle.ts";
+import { createAndReleaseOrderForDevice, markOrderFailed, markOrderPaid, releaseOrder } from "../_shared/orderLifecycle.ts";
 
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") {
@@ -47,16 +56,44 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: "payload_resolution_failed" }, 502);
   }
 
-  // orderRef entspricht orders.id (siehe createCheckout: checkout_reference
-  // wird beim Anlegen der SumUp-Session auf die Order-Id gesetzt).
+  // ---------------------------------------------------------------------
+  // Zweig 1: statisches Zahlungsmittel direkt am Gerät (z.B. PayPal) --
+  // keine vorherige Order, wird jetzt beim Zahlungseingang angelegt.
+  // ---------------------------------------------------------------------
+  if (payload.mode === "create_order_for_device") {
+    if (payload.status !== "paid") {
+      // 'pending'/'failed' ohne vorherige Reservierung: nichts zu tun,
+      // es gibt keine Order, die abgebrochen werden müsste.
+      return jsonResponse({ ok: true, note: "no_action_needed_for_status" });
+    }
+
+    try {
+      const result = await createAndReleaseOrderForDevice(supabase, {
+        deviceId: payload.ref,
+        providerId,
+        providerRef: payload.providerTransactionId ?? payload.ref,
+        amountCents: payload.amountCents,
+        currency: payload.currency,
+      });
+      return jsonResponse({ ok: true, result });
+    } catch (err) {
+      console.error("payment-webhook: createAndReleaseOrderForDevice fehlgeschlagen:", err);
+      return jsonResponse({ error: "processing_failed" }, 500);
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Zweig 2: bestehende, von create-checkout angelegte Order bestätigen
+  // (SumUp Hosted Checkout).
+  // ---------------------------------------------------------------------
   const { data: order, error: orderError } = await supabase
     .from("orders")
     .select("id, project_id, device_id, status")
-    .eq("id", payload.orderRef)
+    .eq("id", payload.ref)
     .single();
 
   if (orderError || !order) {
-    console.error(`payment-webhook: Order '${payload.orderRef}' nicht gefunden.`);
+    console.error(`payment-webhook: Order '${payload.ref}' nicht gefunden.`);
     return jsonResponse({ error: "order_not_found" }, 404);
   }
 

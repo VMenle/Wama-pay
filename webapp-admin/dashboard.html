@@ -54,6 +54,7 @@
   var STATUS_LABELS = { free: "Frei", busy: "Belegt", offline: "Offline", maintenance: "Wartung" };
 
   var client, projectId, locations = [], devices = [], products = [], overrideOrders = [];
+  var deviceLocationFilter = "";
 
   function el(tag, attrs, children) {
     var node = document.createElement(tag);
@@ -81,8 +82,16 @@
       client.from("locations").select("id, name, address").eq("project_id", projectId).order("name"),
       client.from("devices").select("id, type, label, status, location_id, switch_webhook_url, switch_webhook_secret, override_token").eq("project_id", projectId).order("label"),
       client.from("products").select("id, device_type, location_id, name, price_cents, currency, is_active").eq("project_id", projectId).order("device_type"),
-      client.from("orders").select("id, created_at, status, device_id, devices(label, location_id)").eq("project_id", projectId).eq("payment_method", "override").order("created_at", { ascending: false }).limit(200),
+      // devices!orders_device_id_fkey: orders und devices haben ZWEI Fremdschlüssel
+      // zueinander (orders.device_id -> devices.id UND devices.current_order_id ->
+      // orders.id) -- ohne den expliziten FK-Namen ist die Einbettung für
+      // PostgREST mehrdeutig und die Abfrage schlägt fehl (mit leerem Ergebnis).
+      client.from("orders").select("id, created_at, status, device_id, devices!orders_device_id_fkey(label, location_id)").eq("project_id", projectId).eq("payment_method", "override").order("created_at", { ascending: false }).limit(200),
     ]);
+    if (locRes.error) console.error("locations:", locRes.error);
+    if (devRes.error) console.error("devices:", devRes.error);
+    if (prodRes.error) console.error("products:", prodRes.error);
+    if (overrideRes.error) console.error("override orders:", overrideRes.error);
     locations = locRes.data || [];
     devices = devRes.data || [];
     products = prodRes.data || [];
@@ -150,11 +159,32 @@
     section.appendChild(el("h2", { text: "Geräte" }));
     section.appendChild(el("p", { class: "hint", text: "Die Geräte-ID brauchen Sie für den QR-Code am Gerät (pay.html?device=...) bzw. das custom-Feld im PayPal-Button." }));
 
+    var filterField = el("div", { class: "field", style: "max-width:260px; margin-bottom:12px;" });
+    var filterLabel = el("label", { text: "Nach Standort filtern" });
+    var filterSelect = el("select", { id: "dev-location-filter" });
+    filterSelect.appendChild(el("option", { value: "", text: "Alle Standorte" }));
+    locations.forEach(function (l) {
+      var opt = el("option", { value: l.id, text: l.name });
+      if (l.id === deviceLocationFilter) opt.setAttribute("selected", "selected");
+      filterSelect.appendChild(opt);
+    });
+    filterSelect.addEventListener("change", function () {
+      deviceLocationFilter = filterSelect.value;
+      render();
+    });
+    filterField.appendChild(filterLabel);
+    filterField.appendChild(filterSelect);
+    section.appendChild(filterField);
+
     var table = el("table", { class: "admin-table" });
     table.innerHTML = "<thead><tr><th>Bezeichnung</th><th>Typ</th><th>Standort</th><th>Status</th><th>Geräte-ID</th><th>Schaltlink</th><th>Notfreigabe</th><th></th></tr></thead>";
     var tbody = el("tbody");
 
-    devices.forEach(function (dev) {
+    var visibleDevices = deviceLocationFilter
+      ? devices.filter(function (d) { return d.location_id === deviceLocationFilter; })
+      : devices;
+
+    visibleDevices.forEach(function (dev) {
       var idCell = el("td");
       var idCode = el("span", { class: "id-copy", text: dev.id.slice(0, 8) + "…", title: "Klicken zum Kopieren: " + dev.id });
       idCode.addEventListener("click", function () {
@@ -189,7 +219,19 @@
       var overrideBtn = el("button", { type: "button", class: "btn-ghost btn-xs", text: dev.override_token ? "QR erneuern" : "QR erzeugen" });
       overrideBtn.addEventListener("click", function () { openOverrideQrPanel(dev, tr); });
 
-      var actionsTd = el("td", { class: "row-actions" }, [editBtn, overrideBtn]);
+      var deleteBtn = el("button", { type: "button", class: "btn-ghost btn-xs", text: "Löschen" });
+      deleteBtn.addEventListener("click", async function () {
+        if (!confirm('Gerät "' + dev.label + '" wirklich löschen? Das lässt sich nicht rückgängig machen.')) return;
+        var { error } = await client.from("devices").delete().eq("id", dev.id);
+        if (error) {
+          // z.B. Fremdschlüssel-Sperre, wenn es bereits Bestellungen für dieses Gerät gibt
+          alert("Löschen fehlgeschlagen: " + error.message);
+          return;
+        }
+        await reloadAll();
+      });
+
+      var actionsTd = el("td", { class: "row-actions" }, [editBtn, overrideBtn, deleteBtn]);
 
       var tr = el("tr", {}, [
         el("td", { text: dev.label }),

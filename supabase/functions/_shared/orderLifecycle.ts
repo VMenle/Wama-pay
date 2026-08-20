@@ -66,10 +66,12 @@ export async function markOrderPaid(
 }
 
 /**
- * Ruft den pro Gerät hinterlegten Einschalt-Webhook auf (Admin-Webapp ->
- * devices.switch_webhook_url). Platzhalter-Mechanismus für die physische
- * Freigabe -- fehlt die URL, bleibt die Freigabe rein digital (nur
- * Datenbank-Status), das ist bewusst kein Fehlerzustand.
+ * Ruft den pro Gerät hinterlegten Einschalt-Link auf (Admin-Webapp ->
+ * devices.switch_webhook_url). Bewusst ein simpler GET-Aufruf ohne Body --
+ * passt direkt zu einem Shelly-Cloud-Schaltlink (fertiger Link inkl. aller
+ * nötigen Parameter, einfach aufzurufen wie im Browser). Fehlt die URL,
+ * bleibt die Freigabe rein digital (nur Datenbank-Status), das ist bewusst
+ * kein Fehlerzustand.
  */
 async function triggerDeviceActivation(
   supabase: SupabaseClient,
@@ -87,13 +89,16 @@ async function triggerDeviceActivation(
   }
 
   try {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    // Optionales Secret als Header, für Empfänger, die das auswerten können
+    // (ein reiner Shelly-Cloud-Schaltlink ignoriert unbekannte Header
+    // einfach, das Secret schadet dort also nicht, wird aber auch nicht
+    // gebraucht -- die Sicherheit steckt dort bereits im Link selbst).
+    const headers: Record<string, string> = {};
     if (device.switch_webhook_secret) headers["X-Wama-Pay-Switch-Secret"] = device.switch_webhook_secret;
 
     const res = await fetch(device.switch_webhook_url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body: JSON.stringify({ device_id: deviceId, action: "on" }),
     });
 
     if (!res.ok) {

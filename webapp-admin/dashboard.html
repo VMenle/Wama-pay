@@ -139,7 +139,7 @@
     section.appendChild(el("p", { class: "hint", text: "Die Geräte-ID brauchen Sie für den QR-Code am Gerät (pay.html?device=...) bzw. das custom-Feld im PayPal-Button." }));
 
     var table = el("table", { class: "admin-table" });
-    table.innerHTML = "<thead><tr><th>Bezeichnung</th><th>Typ</th><th>Standort</th><th>Status</th><th>Geräte-ID</th><th>Einschalt-Webhook</th><th></th></tr></thead>";
+    table.innerHTML = "<thead><tr><th>Bezeichnung</th><th>Typ</th><th>Standort</th><th>Status</th><th>Geräte-ID</th><th>Schaltlink</th><th></th></tr></thead>";
     var tbody = el("tbody");
 
     devices.forEach(function (dev) {
@@ -221,9 +221,9 @@
     var panel = el("div", { id: "device-edit-panel", class: "card", style: "margin-top:12px; max-width:640px;" });
     panel.innerHTML =
       '<h3 style="font-size:14.5px; margin-bottom:10px;">Gerät bearbeiten: ' + dev.label + '</h3>' +
-      '<div class="field"><label>Einschalt-Webhook-URL <span class="hint" style="margin:0;">(Platzhalter für die physische Freigabe)</span></label>' +
+      '<div class="field"><label>Schaltlink <span class="hint" style="margin:0;">(z.B. Shelly-Cloud-Schaltlink für dieses Gerät)</span></label>' +
       '<input type="text" id="edit-webhook-url" value="' + (dev.switch_webhook_url || "") + '" placeholder="https://..."></div>' +
-      '<div class="field"><label>Einschalt-Webhook-Secret <span class="hint" style="margin:0;">(optional, wird als Header mitgeschickt)</span></label>' +
+      '<div class="field"><label>Secret <span class="hint" style="margin:0;">(optional, nur falls der Schaltlink das auswertet)</span></label>' +
       '<input type="text" id="edit-webhook-secret" value="' + (dev.switch_webhook_secret || "") + '"></div>' +
       '<div style="display:flex; gap:10px;"><button type="button" class="btn-primary" id="edit-save">Speichern</button>' +
       '<button type="button" class="btn-ghost" id="edit-cancel">Abbrechen</button></div>' +

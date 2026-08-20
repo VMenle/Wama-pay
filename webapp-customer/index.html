@@ -107,7 +107,11 @@
       var client = await window.wamaSupabaseReady;
 
       if (mode === "signup") {
-        var { error } = await client.auth.signUp({ email: email, password: password });
+        var { error } = await client.auth.signUp({
+          email: email,
+          password: password,
+          options: { emailRedirectTo: window.location.origin + window.location.pathname },
+        });
         if (error) throw error;
         showSuccess("Registrierung erfolgreich. Bitte bestätigen Sie Ihre E-Mail-Adresse über den zugesendeten Link, bevor Sie sich anmelden.");
       } else {

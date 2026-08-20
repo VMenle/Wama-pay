@@ -66,10 +66,55 @@ export async function markOrderPaid(
 }
 
 /**
- * Gibt das Gerät physisch frei (Freigabe-Relais/Signal) und markiert die
- * Order als 'released'. Setzt devices.status NICHT auf 'free' -- das Gerät
- * bleibt während des laufenden Waschgangs 'busy'; erst der n8n-Workflow
- * "order-released" (Fertig-Signal oder 2h-Timeout) gibt es wieder frei.
+ * Ruft den pro Gerät hinterlegten Einschalt-Webhook auf (Admin-Webapp ->
+ * devices.switch_webhook_url). Platzhalter-Mechanismus für die physische
+ * Freigabe -- fehlt die URL, bleibt die Freigabe rein digital (nur
+ * Datenbank-Status), das ist bewusst kein Fehlerzustand.
+ */
+async function triggerDeviceActivation(
+  supabase: SupabaseClient,
+  deviceId: string,
+): Promise<{ attempted: boolean; success: boolean; detail?: string }> {
+  const { data: device, error } = await supabase
+    .from("devices")
+    .select("switch_webhook_url, switch_webhook_secret")
+    .eq("id", deviceId)
+    .single();
+
+  if (error || !device?.switch_webhook_url) {
+    console.warn(`Gerät ${deviceId}: kein switch_webhook_url hinterlegt -- Freigabe bleibt rein digital.`);
+    return { attempted: false, success: true };
+  }
+
+  try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (device.switch_webhook_secret) headers["X-Wama-Pay-Switch-Secret"] = device.switch_webhook_secret;
+
+    const res = await fetch(device.switch_webhook_url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ device_id: deviceId, action: "on" }),
+    });
+
+    if (!res.ok) {
+      const detail = `Einschalt-Webhook antwortete mit HTTP ${res.status}`;
+      console.error(detail);
+      return { attempted: true, success: false, detail };
+    }
+    return { attempted: true, success: true };
+  } catch (err) {
+    const detail = `Einschalt-Webhook fehlgeschlagen: ${(err as Error).message}`;
+    console.error(detail);
+    return { attempted: true, success: false, detail };
+  }
+}
+
+/**
+ * Gibt das Gerät physisch frei (ruft den Einschalt-Webhook auf, siehe
+ * triggerDeviceActivation) und markiert die Order als 'released'. Setzt
+ * devices.status NICHT auf 'free' -- das Gerät bleibt während des
+ * laufenden Waschgangs 'busy'; erst der n8n-Workflow "order-released"
+ * (Fertig-Signal oder 2h-Timeout) gibt es wieder frei.
  */
 export async function releaseOrder(
   supabase: SupabaseClient,
@@ -83,15 +128,23 @@ export async function releaseOrder(
 
   if (orderError) throw new Error(`Order konnte nicht auf 'released' gesetzt werden: ${orderError.message}`);
 
+  const activation = await triggerDeviceActivation(supabase, order.device_id);
+
   const { error: releaseEventError } = await supabase.from("release_events").insert({
     order_id: order.id,
     device_id: order.device_id,
     triggered_by: "payment_webhook",
-    success: true,
+    success: activation.success,
+    error_detail: activation.detail ?? null,
   });
   if (releaseEventError) console.error("release_events-Insert fehlgeschlagen:", releaseEventError);
 
-  await writeAuditLog(supabase, { projectId: order.project_id, action: "device.released", orderId: order.id });
+  await writeAuditLog(supabase, {
+    projectId: order.project_id,
+    action: "device.released",
+    orderId: order.id,
+    metadata: { activation_attempted: activation.attempted, activation_success: activation.success },
+  });
   await triggerN8n("wama-pay/order-released", { order_id: order.id, device_id: order.device_id });
 }
 

@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verwaltung – Wama-Pay Admin</title>
+<link rel="stylesheet" href="../assets/shared.css">
+<style>
+  .admin-table{width:100%; border-collapse:collapse; font-size:13.5px;}
+  .admin-table th{text-align:left; padding:8px 10px; color:var(--ink-soft); font-size:12px; text-transform:uppercase; letter-spacing:.04em; border-bottom:1px solid var(--line);}
+  .admin-table td{padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:middle;}
+  .admin-table tr:last-child td{border-bottom:none;}
+  .admin-section{margin-bottom:40px;}
+  .admin-section h2{font-size:18px; margin-bottom:4px;}
+  .admin-section .hint{font-size:13px; color:var(--ink-soft); margin-bottom:14px;}
+  .inline-form{display:grid; grid-template-columns:repeat(auto-fit, minmax(160px,1fr)); gap:10px; align-items:end; margin-top:14px; background:var(--blue-light); padding:14px; border-radius:10px;}
+  .inline-form .field{margin-bottom:0;}
+  .id-copy{font-family:monospace; font-size:11.5px; background:#eceef1; padding:2px 6px; border-radius:5px; cursor:pointer;}
+  .btn-xs{padding:5px 10px; font-size:12.5px; border-radius:7px;}
+  .row-actions{display:flex; gap:6px; flex-wrap:wrap;}
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="app-navbar">
+    <a href="dashboard.html" class="app-brand"><span class="app-brand-mark"></span>Wama-Pay Admin</a>
+    <nav class="app-nav-links">
+      <a href="../webapp-checkout/index.html">Geräteübersicht</a>
+      <a href="#" id="logout-link">Abmelden</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <div class="page-head">
+      <span class="eyebrow">Admin</span>
+      <h1>Standorte, Geräte &amp; Preise</h1>
+      <p>Änderungen wirken sich sofort auf die Checkout-Webapp aus.</p>
+    </div>
+
+    <div id="root">
+      <p style="color:var(--ink-soft);">Lade…</p>
+    </div>
+  </div>
+</main>
+
+<script src="../assets/config.js"></script>
+<script src="../assets/supabase-client.js"></script>
+<script>
+  var DEVICE_TYPE_LABELS = { washer: "Waschmaschine", dryer: "Trockner", trailer: "Anhänger", card_dispenser: "Kartenspender" };
+  var STATUS_LABELS = { free: "Frei", busy: "Belegt", offline: "Offline", maintenance: "Wartung" };
+
+  var client, projectId, locations = [], devices = [], products = [];
+
+  function el(tag, attrs, children) {
+    var node = document.createElement(tag);
+    attrs = attrs || {};
+    for (var k in attrs) {
+      if (k === "text") node.textContent = attrs[k];
+      else if (k === "html") node.innerHTML = attrs[k];
+      else node.setAttribute(k, attrs[k]);
+    }
+    (children || []).forEach(function (c) { if (c) node.appendChild(c); });
+    return node;
+  }
+
+  function formatPrice(cents, currency) {
+    return (cents / 100).toLocaleString("de-DE", { style: "currency", currency: currency || "EUR" });
+  }
+
+  function locationName(id) {
+    var loc = locations.find(function (l) { return l.id === id; });
+    return loc ? loc.name : "—";
+  }
+
+  async function reloadAll() {
+    var [locRes, devRes, prodRes] = await Promise.all([
+      client.from("locations").select("id, name, address").eq("project_id", projectId).order("name"),
+      client.from("devices").select("id, type, label, status, location_id, switch_webhook_url, switch_webhook_secret").eq("project_id", projectId).order("label"),
+      client.from("products").select("id, device_type, location_id, name, price_cents, currency, is_active").eq("project_id", projectId).order("device_type"),
+    ]);
+    locations = locRes.data || [];
+    devices = devRes.data || [];
+    products = prodRes.data || [];
+    render();
+  }
+
+  function render() {
+    var root = document.getElementById("root");
+    root.innerHTML = "";
+    root.appendChild(renderLocationsSection());
+    root.appendChild(renderDevicesSection());
+    root.appendChild(renderProductsSection());
+  }
+
+  // ---------- Standorte ----------
+  function renderLocationsSection() {
+    var section = el("section", { class: "admin-section" });
+    section.appendChild(el("h2", { text: "Standorte" }));
+    section.appendChild(el("p", { class: "hint", text: "Ein Standort fasst mehrere Geräte zusammen (z.B. eine Waschküche)." }));
+
+    var table = el("table", { class: "admin-table" });
+    table.innerHTML = "<thead><tr><th>Name</th><th>Adresse</th></tr></thead>";
+    var tbody = el("tbody");
+    locations.forEach(function (loc) {
+      tbody.appendChild(el("tr", {}, [
+        el("td", { text: loc.name }),
+        el("td", { text: loc.address || "—" }),
+      ]));
+    });
+    table.appendChild(tbody);
+    section.appendChild(el("div", { class: "card" }, [table]));
+
+    var form = el("form", { class: "inline-form" });
+    form.innerHTML =
+      '<div class="field"><label>Name</label><input type="text" id="loc-name" required placeholder="z.B. Heubach"></div>' +
+      '<div class="field"><label>Adresse <span class="hint" style="margin:0;">(optional)</span></label><input type="text" id="loc-address"></div>' +
+      '<button type="submit" class="btn-primary">Standort anlegen</button>';
+    form.addEventListener("submit", async function (e) {
+      e.preventDefault();
+      var name = document.getElementById("loc-name").value.trim();
+      var address = document.getElementById("loc-address").value.trim();
+      if (!name) return;
+      var { error } = await client.from("locations").insert({ project_id: projectId, name: name, address: address || null });
+      if (error) { alert("Fehler: " + error.message); return; }
+      await reloadAll();
+    });
+    section.appendChild(form);
+
+    return section;
+  }
+
+  // ---------- Geräte ----------
+  function renderDevicesSection() {
+    var section = el("section", { class: "admin-section" });
+    section.appendChild(el("h2", { text: "Geräte" }));
+    section.appendChild(el("p", { class: "hint", text: "Die Geräte-ID brauchen Sie für den QR-Code am Gerät (pay.html?device=...) bzw. das custom-Feld im PayPal-Button." }));
+
+    var table = el("table", { class: "admin-table" });
+    table.innerHTML = "<thead><tr><th>Bezeichnung</th><th>Typ</th><th>Standort</th><th>Status</th><th>Geräte-ID</th><th>Einschalt-Webhook</th><th></th></tr></thead>";
+    var tbody = el("tbody");
+
+    devices.forEach(function (dev) {
+      var idCell = el("td");
+      var idCode = el("span", { class: "id-copy", text: dev.id.slice(0, 8) + "…", title: "Klicken zum Kopieren: " + dev.id });
+      idCode.addEventListener("click", function () {
+        navigator.clipboard.writeText(dev.id).then(function () {
+          idCode.textContent = "kopiert!";
+          setTimeout(function () { idCode.textContent = dev.id.slice(0, 8) + "…"; }, 1200);
+        });
+      });
+      idCell.appendChild(idCode);
+
+      var statusSelect = el("select");
+      Object.keys(STATUS_LABELS).forEach(function (s) {
+        var opt = el("option", { value: s, text: STATUS_LABELS[s] });
+        if (s === dev.status) opt.setAttribute("selected", "selected");
+        statusSelect.appendChild(opt);
+      });
+      statusSelect.addEventListener("change", async function () {
+        var { error } = await client.from("devices").update({ status: statusSelect.value }).eq("id", dev.id);
+        if (error) alert("Fehler: " + error.message);
+      });
+      var statusTd = el("td", {}, [statusSelect]);
+
+      var webhookTd = el("td", { text: dev.switch_webhook_url ? "eingerichtet" : "nicht eingerichtet" });
+      webhookTd.style.color = dev.switch_webhook_url ? "var(--green)" : "var(--ink-soft)";
+
+      var editBtn = el("button", { type: "button", class: "btn-ghost btn-xs", text: "Bearbeiten" });
+      editBtn.addEventListener("click", function () { openDeviceEditRow(dev, tr); });
+      var actionsTd = el("td", { class: "row-actions" }, [editBtn]);
+
+      var tr = el("tr", {}, [
+        el("td", { text: dev.label }),
+        el("td", { text: DEVICE_TYPE_LABELS[dev.type] || dev.type }),
+        el("td", { text: locationName(dev.location_id) }),
+        statusTd,
+        idCell,
+        webhookTd,
+        actionsTd,
+      ]);
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    section.appendChild(el("div", { class: "card" }, [table]));
+
+    var form = el("form", { class: "inline-form" });
+    var locOptions = locations.map(function (l) { return '<option value="' + l.id + '">' + l.name + "</option>"; }).join("");
+    var typeOptions = Object.keys(DEVICE_TYPE_LABELS).map(function (t) { return '<option value="' + t + '">' + DEVICE_TYPE_LABELS[t] + "</option>"; }).join("");
+    form.innerHTML =
+      '<div class="field"><label>Bezeichnung</label><input type="text" id="dev-label" required placeholder="z.B. 23001"></div>' +
+      '<div class="field"><label>Typ</label><select id="dev-type">' + typeOptions + "</select></div>" +
+      '<div class="field"><label>Standort</label><select id="dev-location">' + locOptions + "</select></div>" +
+      '<button type="submit" class="btn-primary">Gerät anlegen</button>';
+    form.addEventListener("submit", async function (e) {
+      e.preventDefault();
+      var label = document.getElementById("dev-label").value.trim();
+      var type = document.getElementById("dev-type").value;
+      var locationId = document.getElementById("dev-location").value;
+      if (!label || !locationId) { alert("Bitte zuerst einen Standort anlegen."); return; }
+      var qrToken = crypto.randomUUID();
+      var { data, error } = await client.from("devices").insert({
+        project_id: projectId, location_id: locationId, type: type, label: label,
+        qr_code_token: qrToken, status: "free",
+      }).select("id").single();
+      if (error) { alert("Fehler: " + error.message); return; }
+      await reloadAll();
+      alert("Gerät angelegt. Geräte-ID: " + data.id + "\n\nDiese ID brauchen Sie für den QR-Code (pay.html?device=" + data.id + ") und ggf. das PayPal custom-Feld.");
+    });
+    section.appendChild(form);
+
+    return section;
+  }
+
+  function openDeviceEditRow(dev, afterRow) {
+    var existing = document.getElementById("device-edit-panel");
+    if (existing) existing.remove();
+
+    var panel = el("div", { id: "device-edit-panel", class: "card", style: "margin-top:12px; max-width:640px;" });
+    panel.innerHTML =
+      '<h3 style="font-size:14.5px; margin-bottom:10px;">Gerät bearbeiten: ' + dev.label + '</h3>' +
+      '<div class="field"><label>Einschalt-Webhook-URL <span class="hint" style="margin:0;">(Platzhalter für die physische Freigabe)</span></label>' +
+      '<input type="text" id="edit-webhook-url" value="' + (dev.switch_webhook_url || "") + '" placeholder="https://..."></div>' +
+      '<div class="field"><label>Einschalt-Webhook-Secret <span class="hint" style="margin:0;">(optional, wird als Header mitgeschickt)</span></label>' +
+      '<input type="text" id="edit-webhook-secret" value="' + (dev.switch_webhook_secret || "") + '"></div>' +
+      '<div style="display:flex; gap:10px;"><button type="button" class="btn-primary" id="edit-save">Speichern</button>' +
+      '<button type="button" class="btn-ghost" id="edit-cancel">Abbrechen</button></div>' +
+      '<div class="form-error" id="edit-error" style="display:none;"></div>';
+
+    afterRow.parentNode.insertBefore(panel, afterRow.nextSibling);
+
+    document.getElementById("edit-cancel").addEventListener("click", function () { panel.remove(); });
+    document.getElementById("edit-save").addEventListener("click", async function () {
+      var url = document.getElementById("edit-webhook-url").value.trim();
+      var secret = document.getElementById("edit-webhook-secret").value.trim();
+      var { error } = await client.from("devices").update({
+        switch_webhook_url: url || null,
+        switch_webhook_secret: secret || null,
+      }).eq("id", dev.id);
+      if (error) {
+        var errEl = document.getElementById("edit-error");
+        errEl.textContent = error.message;
+        errEl.style.display = "block";
+        return;
+      }
+      panel.remove();
+      await reloadAll();
+    });
+  }
+
+  // ---------- Preise ----------
+  function renderProductsSection() {
+    var section = el("section", { class: "admin-section" });
+    section.appendChild(el("h2", { text: "Preise" }));
+    section.appendChild(el("p", { class: "hint", text: "Preis pro Nutzung (nicht zeitbasiert). Ohne Standort-Auswahl gilt der Preis projektweit für diesen Gerätetyp." }));
+
+    var table = el("table", { class: "admin-table" });
+    table.innerHTML = "<thead><tr><th>Gerätetyp</th><th>Standort</th><th>Name</th><th>Preis</th><th>Aktiv</th></tr></thead>";
+    var tbody = el("tbody");
+    products.forEach(function (p) {
+      var activeCb = el("input", { type: "checkbox" });
+      activeCb.checked = p.is_active;
+      activeCb.addEventListener("change", async function () {
+        var { error } = await client.from("products").update({ is_active: activeCb.checked }).eq("id", p.id);
+        if (error) alert("Fehler: " + error.message);
+      });
+      tbody.appendChild(el("tr", {}, [
+        el("td", { text: DEVICE_TYPE_LABELS[p.device_type] || p.device_type }),
+        el("td", { text: p.location_id ? locationName(p.location_id) : "alle Standorte" }),
+        el("td", { text: p.name }),
+        el("td", { text: formatPrice(p.price_cents, p.currency) }),
+        el("td", {}, [activeCb]),
+      ]));
+    });
+    table.appendChild(tbody);
+    section.appendChild(el("div", { class: "card" }, [table]));
+
+    var form = el("form", { class: "inline-form" });
+    var typeOptions = Object.keys(DEVICE_TYPE_LABELS).map(function (t) { return '<option value="' + t + '">' + DEVICE_TYPE_LABELS[t] + "</option>"; }).join("");
+    var locOptions = '<option value="">Alle Standorte</option>' + locations.map(function (l) { return '<option value="' + l.id + '">' + l.name + "</option>"; }).join("");
+    form.innerHTML =
+      '<div class="field"><label>Gerätetyp</label><select id="prod-type">' + typeOptions + "</select></div>" +
+      '<div class="field"><label>Standort</label><select id="prod-location">' + locOptions + "</select></div>" +
+      '<div class="field"><label>Name</label><input type="text" id="prod-name" value="Waschgang"></div>' +
+      '<div class="field"><label>Preis (€)</label><input type="number" id="prod-price" step="0.01" min="0.01" required placeholder="0,89"></div>' +
+      '<button type="submit" class="btn-primary">Preis anlegen</button>';
+    form.addEventListener("submit", async function (e) {
+      e.preventDefault();
+      var type = document.getElementById("prod-type").value;
+      var locationId = document.getElementById("prod-location").value || null;
+      var name = document.getElementById("prod-name").value.trim() || "Waschgang";
+      var priceEuro = parseFloat(document.getElementById("prod-price").value);
+      if (!priceEuro || priceEuro <= 0) { alert("Bitte einen gültigen Preis eingeben."); return; }
+      var { error } = await client.from("products").insert({
+        project_id: projectId, device_type: type, location_id: locationId,
+        name: name, price_cents: Math.round(priceEuro * 100), currency: "EUR", is_active: true,
+      });
+      if (error) { alert("Fehler: " + error.message); return; }
+      await reloadAll();
+    });
+    section.appendChild(form);
+
+    return section;
+  }
+
+  (async function init() {
+    var cfg = window.WAMA_PAY_CONFIG;
+    if (!cfg.supabaseUrl || cfg.supabaseUrl.indexOf("TODO_") === 0) {
+      document.getElementById("root").innerHTML = '<div class="notice notice-warn">Supabase ist noch nicht konfiguriert.</div>';
+      return;
+    }
+
+    client = await window.wamaSupabaseReady;
+    var { data: sessionData } = await client.auth.getSession();
+    if (!sessionData || !sessionData.session) { window.location.href = "index.html"; return; }
+
+    var { data: isAdmin } = await client.rpc("is_admin");
+    if (!isAdmin) {
+      document.getElementById("root").innerHTML = '<div class="notice notice-warn">Dieses Konto hat keinen Admin-Zugriff.</div>';
+      return;
+    }
+
+    document.getElementById("logout-link").addEventListener("click", async function (e) {
+      e.preventDefault();
+      await client.auth.signOut();
+      window.location.href = "index.html";
+    });
+
+    var { data: project } = await client.from("projects").select("id").eq("key", cfg.projectKey).single();
+    if (!project) {
+      document.getElementById("root").innerHTML = '<div class="notice notice-warn">Projekt "' + cfg.projectKey + '" nicht gefunden.</div>';
+      return;
+    }
+    projectId = project.id;
+
+    await reloadAll();
+  })();
+</script>
+
+</body>
+</html>

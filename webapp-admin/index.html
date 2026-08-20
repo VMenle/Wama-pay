@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Anmelden – Wama-Pay Admin</title>
+<link rel="stylesheet" href="../assets/shared.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="app-navbar">
+    <a href="index.html" class="app-brand"><span class="app-brand-mark"></span>Wama-Pay Admin</a>
+  </div>
+</header>
+
+<main>
+  <div class="wrap-narrow">
+    <div class="page-head">
+      <span class="eyebrow">Admin</span>
+      <h1>Anmelden</h1>
+      <p>Nur für freigeschaltete Admin-Konten. Ein normales Kundenkonto reicht nicht aus.</p>
+    </div>
+
+    <div id="config-notice"></div>
+
+    <div class="card" style="max-width:440px;">
+      <form id="auth-form">
+        <div class="field">
+          <label for="email">E-Mail</label>
+          <input type="email" id="email" required autocomplete="email">
+        </div>
+        <div class="field">
+          <label for="password">Passwort</label>
+          <input type="password" id="password" required autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn-primary btn-block" id="submit-btn">Anmelden</button>
+        <div class="form-error" id="form-error" style="display:none;"></div>
+      </form>
+    </div>
+  </div>
+</main>
+
+<footer class="app-footer">
+  <div class="wrap" style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px; width:100%;">
+    <span>© 2026 Wama-Pay</span>
+    <a href="../webapp-checkout/index.html">Zur Geräteübersicht</a>
+  </div>
+</footer>
+
+<script src="../assets/config.js"></script>
+<script src="../assets/supabase-client.js"></script>
+<script>
+  function showError(msg) {
+    var el = document.getElementById("form-error");
+    el.textContent = msg;
+    el.style.display = "block";
+  }
+
+  document.getElementById("auth-form").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    var email = document.getElementById("email").value.trim();
+    var password = document.getElementById("password").value;
+    var btn = document.getElementById("submit-btn");
+    btn.disabled = true;
+
+    try {
+      var cfg = window.WAMA_PAY_CONFIG;
+      if (!cfg.supabaseUrl || cfg.supabaseUrl.indexOf("TODO_") === 0) {
+        throw new Error("Supabase ist noch nicht konfiguriert.");
+      }
+      var client = await window.wamaSupabaseReady;
+      var { error } = await client.auth.signInWithPassword({ email: email, password: password });
+      if (error) throw error;
+
+      var { data: isAdmin } = await client.rpc("is_admin");
+      if (!isAdmin) {
+        await client.auth.signOut();
+        throw new Error("Dieses Konto ist kein Admin-Konto.");
+      }
+
+      window.location.href = "dashboard.html";
+    } catch (err) {
+      showError(err.message || "Ein Fehler ist aufgetreten.");
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  (async function checkExistingSession() {
+    try {
+      var cfg = window.WAMA_PAY_CONFIG;
+      if (!cfg.supabaseUrl || cfg.supabaseUrl.indexOf("TODO_") === 0) {
+        var notice = document.createElement("div");
+        notice.className = "notice notice-warn";
+        notice.textContent = "Hinweis: Supabase ist noch nicht verbunden (siehe assets/config.js).";
+        document.getElementById("config-notice").appendChild(notice);
+        return;
+      }
+      var client = await window.wamaSupabaseReady;
+      var { data } = await client.auth.getSession();
+      if (data && data.session) {
+        var { data: isAdmin } = await client.rpc("is_admin");
+        if (isAdmin) window.location.href = "dashboard.html";
+      }
+    } catch (e) { /* Formular bleibt nutzbar */ }
+  })();
+</script>
+
+</body>
+</html>

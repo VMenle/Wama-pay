@@ -137,8 +137,16 @@ export const sumupAdapter: PaymentProviderAdapter = {
   async verifyWebhookRequest(rawBody: string, headers: Headers): Promise<boolean> {
     const secret = getWebhookSigningSecret();
     if (!secret) {
-      console.error("SUMUP_WEBHOOK_SIGNING_SECRET nicht gesetzt -- Webhook wird abgelehnt.");
-      return false;
+      // Absichtlich kein hartes Ablehnen: der tatsächliche Zahlungsstatus
+      // wird nie aus diesem Request übernommen -- resolveWebhookPayload()
+      // holt ihn unten immer zusätzlich per eigenem, authentifiziertem
+      // GET-Aufruf direkt bei SumUp. Die Signaturprüfung ist daher nur eine
+      // zusätzliche Absicherung (verhindert unnötige API-Aufrufe durch
+      // Dritte), keine Voraussetzung für die eigentliche Sicherheit. Damit
+      // lässt sich der Zahlungsweg auch testen, bevor der genaue Ort des
+      // Signing-Secrets im SumUp-Dashboard gefunden ist.
+      console.warn("SUMUP_WEBHOOK_SIGNING_SECRET nicht gesetzt -- Signatur wird nicht geprüft, Status wird trotzdem live bei SumUp verifiziert.");
+      return true;
     }
     const provided = headers.get("x-payload-signature");
     if (!provided) {

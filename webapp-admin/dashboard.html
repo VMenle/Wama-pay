@@ -48,11 +48,12 @@
 
 <script src="../assets/config.js"></script>
 <script src="../assets/supabase-client.js"></script>
+<script src="../assets/qrcode-client.js"></script>
 <script>
   var DEVICE_TYPE_LABELS = { washer: "Waschmaschine", dryer: "Trockner", trailer: "Anhänger", card_dispenser: "Kartenspender" };
   var STATUS_LABELS = { free: "Frei", busy: "Belegt", offline: "Offline", maintenance: "Wartung" };
 
-  var client, projectId, locations = [], devices = [], products = [];
+  var client, projectId, locations = [], devices = [], products = [], overrideOrders = [];
 
   function el(tag, attrs, children) {
     var node = document.createElement(tag);
@@ -76,14 +77,16 @@
   }
 
   async function reloadAll() {
-    var [locRes, devRes, prodRes] = await Promise.all([
+    var [locRes, devRes, prodRes, overrideRes] = await Promise.all([
       client.from("locations").select("id, name, address").eq("project_id", projectId).order("name"),
-      client.from("devices").select("id, type, label, status, location_id, switch_webhook_url, switch_webhook_secret").eq("project_id", projectId).order("label"),
+      client.from("devices").select("id, type, label, status, location_id, switch_webhook_url, switch_webhook_secret, override_token").eq("project_id", projectId).order("label"),
       client.from("products").select("id, device_type, location_id, name, price_cents, currency, is_active").eq("project_id", projectId).order("device_type"),
+      client.from("orders").select("id, created_at, status, device_id, devices(label, location_id)").eq("project_id", projectId).eq("payment_method", "override").order("created_at", { ascending: false }).limit(200),
     ]);
     locations = locRes.data || [];
     devices = devRes.data || [];
     products = prodRes.data || [];
+    overrideOrders = overrideRes.data || [];
     render();
   }
 
@@ -93,6 +96,15 @@
     root.appendChild(renderLocationsSection());
     root.appendChild(renderDevicesSection());
     root.appendChild(renderProductsSection());
+    root.appendChild(renderSecuritySection());
+    root.appendChild(renderOverrideLogSection());
+  }
+
+  function overrideUrlFor(dev) {
+    return new URL(
+      "../webapp-checkout/override.html?device=" + encodeURIComponent(dev.id) + "&token=" + encodeURIComponent(dev.override_token),
+      window.location.href
+    ).toString();
   }
 
   // ---------- Standorte ----------
@@ -139,7 +151,7 @@
     section.appendChild(el("p", { class: "hint", text: "Die Geräte-ID brauchen Sie für den QR-Code am Gerät (pay.html?device=...) bzw. das custom-Feld im PayPal-Button." }));
 
     var table = el("table", { class: "admin-table" });
-    table.innerHTML = "<thead><tr><th>Bezeichnung</th><th>Typ</th><th>Standort</th><th>Status</th><th>Geräte-ID</th><th>Schaltlink</th><th></th></tr></thead>";
+    table.innerHTML = "<thead><tr><th>Bezeichnung</th><th>Typ</th><th>Standort</th><th>Status</th><th>Geräte-ID</th><th>Schaltlink</th><th>Notfreigabe</th><th></th></tr></thead>";
     var tbody = el("tbody");
 
     devices.forEach(function (dev) {
@@ -168,9 +180,16 @@
       var webhookTd = el("td", { text: dev.switch_webhook_url ? "eingerichtet" : "nicht eingerichtet" });
       webhookTd.style.color = dev.switch_webhook_url ? "var(--green)" : "var(--ink-soft)";
 
+      var overrideTd = el("td", { text: dev.override_token ? "eingerichtet" : "nicht eingerichtet" });
+      overrideTd.style.color = dev.override_token ? "var(--green)" : "var(--ink-soft)";
+
       var editBtn = el("button", { type: "button", class: "btn-ghost btn-xs", text: "Bearbeiten" });
       editBtn.addEventListener("click", function () { openDeviceEditRow(dev, tr); });
-      var actionsTd = el("td", { class: "row-actions" }, [editBtn]);
+
+      var overrideBtn = el("button", { type: "button", class: "btn-ghost btn-xs", text: dev.override_token ? "QR erneuern" : "QR erzeugen" });
+      overrideBtn.addEventListener("click", function () { openOverrideQrPanel(dev, tr); });
+
+      var actionsTd = el("td", { class: "row-actions" }, [editBtn, overrideBtn]);
 
       var tr = el("tr", {}, [
         el("td", { text: dev.label }),
@@ -179,6 +198,7 @@
         statusTd,
         idCell,
         webhookTd,
+        overrideTd,
         actionsTd,
       ]);
       tbody.appendChild(tr);
@@ -250,6 +270,48 @@
     });
   }
 
+  function openOverrideQrPanel(dev, afterRow) {
+    var existing = document.getElementById("override-qr-panel");
+    if (existing) existing.remove();
+
+    var panel = el("div", { id: "override-qr-panel", class: "card", style: "margin-top:12px; max-width:480px; text-align:center;" });
+    panel.innerHTML =
+      '<h3 style="font-size:14.5px; margin-bottom:10px;">Notfreigabe-QR: ' + dev.label + '</h3>' +
+      '<p class="hint">Diesen QR-Code NICHT für Kunden sichtbar anbringen (z.B. Serviceklappe). Zusätzlich zum Scannen ist der PIN nötig.</p>' +
+      '<div id="override-qr-container" style="display:flex; justify-content:center; margin:14px 0;"></div>' +
+      '<p style="font-size:11px; font-family:monospace; word-break:break-all; color:var(--ink-soft);" id="override-qr-url"></p>' +
+      '<div style="display:flex; gap:10px; justify-content:center; margin-top:12px;">' +
+      '<button type="button" class="btn-primary btn-xs" id="override-regenerate">' + (dev.override_token ? "Neu erzeugen (alten Code entwerten)" : "QR erzeugen") + '</button>' +
+      '<button type="button" class="btn-ghost btn-xs" id="override-close">Schließen</button></div>';
+
+    afterRow.parentNode.insertBefore(panel, afterRow.nextSibling);
+
+    function showQr(currentDev) {
+      if (!currentDev.override_token) {
+        document.getElementById("override-qr-container").innerHTML = "";
+        document.getElementById("override-qr-url").textContent = "Noch kein Code erzeugt.";
+        return;
+      }
+      var url = overrideUrlFor(currentDev);
+      document.getElementById("override-qr-url").textContent = url;
+      window.wamaRenderQrCode("override-qr-container", url);
+    }
+    showQr(dev);
+
+    document.getElementById("override-close").addEventListener("click", function () { panel.remove(); });
+    document.getElementById("override-regenerate").addEventListener("click", async function () {
+      var newToken = crypto.randomUUID();
+      var { error } = await client.from("devices").update({ override_token: newToken }).eq("id", dev.id);
+      if (error) { alert("Fehler: " + error.message); return; }
+      // dev ist dieselbe Objektreferenz wie in der devices-Liste -- direktes
+      // Mutieren reicht, kein reloadAll() (würde dieses Panel sofort wieder
+      // entfernen, da render() den gesamten #root-Inhalt neu aufbaut).
+      dev.override_token = newToken;
+      showQr(dev);
+      document.getElementById("override-regenerate").textContent = "Neu erzeugen (alten Code entwerten)";
+    });
+  }
+
   // ---------- Preise ----------
   function renderProductsSection() {
     var section = el("section", { class: "admin-section" });
@@ -301,6 +363,79 @@
       await reloadAll();
     });
     section.appendChild(form);
+
+    return section;
+  }
+
+  // ---------- Sicherheit (Notfreigabe-PIN) ----------
+  function renderSecuritySection() {
+    var section = el("section", { class: "admin-section" });
+    section.appendChild(el("h2", { text: "Notfreigabe: PIN" }));
+    section.appendChild(el("p", { class: "hint", text: "Zwei-Faktor für die Notfreigabe: gerätespezifischer QR-Code (siehe oben bei den Geräten) UND dieser PIN, beides zusammen nötig. Der PIN gilt für alle Geräte dieses Projekts." }));
+
+    var card = el("div", { class: "card", style: "max-width:400px;" });
+    card.innerHTML =
+      '<div class="field"><label>Neuer PIN <span class="hint" style="margin:0;">(4 bis 8 Ziffern)</span></label>' +
+      '<input type="password" id="sec-pin" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="off"></div>' +
+      '<button type="button" class="btn-primary" id="sec-save">PIN setzen</button>' +
+      '<div class="form-error" id="sec-error" style="display:none;"></div>' +
+      '<div class="form-success" id="sec-success" style="display:none;"></div>';
+    section.appendChild(card);
+
+    card.querySelector("#sec-save").addEventListener("click", async function () {
+      var pin = card.querySelector("#sec-pin").value.trim();
+      var errorEl = card.querySelector("#sec-error");
+      var successEl = card.querySelector("#sec-success");
+      errorEl.style.display = "none";
+      successEl.style.display = "none";
+
+      if (!/^[0-9]{4,8}$/.test(pin)) {
+        errorEl.textContent = "PIN muss aus 4 bis 8 Ziffern bestehen.";
+        errorEl.style.display = "block";
+        return;
+      }
+
+      var { error } = await client.rpc("set_override_pin", { p_project_id: projectId, p_pin: pin });
+      if (error) {
+        errorEl.textContent = error.message;
+        errorEl.style.display = "block";
+        return;
+      }
+      successEl.textContent = "PIN gespeichert.";
+      successEl.style.display = "block";
+      card.querySelector("#sec-pin").value = "";
+    });
+
+    return section;
+  }
+
+  // ---------- Notfreigabe-Protokoll ----------
+  function renderOverrideLogSection() {
+    var section = el("section", { class: "admin-section" });
+    section.appendChild(el("h2", { text: "Notfreigabe-Protokoll" }));
+    section.appendChild(el("p", { class: "hint", text: "Alle bisherigen Notfreigaben (letzte 200), neueste zuerst." }));
+
+    if (overrideOrders.length === 0) {
+      section.appendChild(el("p", { style: "color:var(--ink-soft);", text: "Bisher keine Notfreigaben." }));
+      return section;
+    }
+
+    var table = el("table", { class: "admin-table" });
+    table.innerHTML = "<thead><tr><th>Zeitpunkt</th><th>Gerät</th><th>Standort</th><th>Ergebnis</th></tr></thead>";
+    var tbody = el("tbody");
+    overrideOrders.forEach(function (o) {
+      var devLabel = o.devices ? o.devices.label : "—";
+      var locId = o.devices ? o.devices.location_id : null;
+      var resultText = o.status === "released" ? "Freigeschaltet" : (o.status === "paid" ? "Angelegt, Gerät war belegt" : o.status);
+      tbody.appendChild(el("tr", {}, [
+        el("td", { text: new Date(o.created_at).toLocaleString("de-DE") }),
+        el("td", { text: devLabel }),
+        el("td", { text: locId ? locationName(locId) : "—" }),
+        el("td", { text: resultText }),
+      ]));
+    });
+    table.appendChild(tbody);
+    section.appendChild(el("div", { class: "card" }, [table]));
 
     return section;
   }

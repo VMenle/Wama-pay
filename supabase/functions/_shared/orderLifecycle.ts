@@ -296,3 +296,93 @@ export async function createAndReleaseOrderForDevice(
   await releaseOrder(supabase, { id: order.id, project_id: order.project_id, device_id: order.device_id });
   return "released";
 }
+
+export type OverrideOrderResult = "released" | "device_busy";
+
+/**
+ * Notfreigabe (Task 11): legt eine Order mit payment_method='override' an
+ * (keine Bezahlung, aber vollständig protokolliert -- amount_cents zeigt
+ * weiterhin den regulären Preis zu Dokumentationszwecken) und gibt das
+ * Gerät frei. Wird von der Edge Function device-override NACH erfolgreicher
+ * Prüfung von Geräte-Token UND PIN aufgerufen (siehe Migration 0018).
+ */
+export async function createAndReleaseOverrideOrder(
+  supabase: SupabaseClient,
+  params: { deviceId: string },
+): Promise<OverrideOrderResult> {
+  const { data: device, error: deviceError } = await supabase
+    .from("devices")
+    .select("id, type, location_id, project_id")
+    .eq("id", params.deviceId)
+    .single();
+
+  if (deviceError || !device) {
+    throw new Error(`Gerät '${params.deviceId}' nicht gefunden: ${deviceError?.message}`);
+  }
+
+  const { data: products, error: productsError } = await supabase
+    .from("products")
+    .select("id, price_cents, currency, location_id")
+    .eq("project_id", device.project_id)
+    .eq("device_type", device.type)
+    .eq("is_active", true)
+    .or(`location_id.eq.${device.location_id},location_id.is.null`);
+
+  if (productsError || !products || products.length === 0) {
+    throw new Error(`Kein aktives Produkt für Gerät '${params.deviceId}' konfiguriert.`);
+  }
+  const product = products.find((p) => p.location_id === device.location_id) ?? products[0];
+
+  const reservationExpiresAt = new Date(Date.now() + 15 * 60_000).toISOString();
+
+  const { data: order, error: orderError } = await supabase
+    .from("orders")
+    .insert({
+      project_id: device.project_id,
+      device_id: device.id,
+      product_id: product.id,
+      customer_id: null,
+      payment_method: "override",
+      provider_id: null,
+      amount_cents: product.price_cents,
+      currency: product.currency,
+      status: "paid",
+      reservation_expires_at: reservationExpiresAt,
+      paid_at: new Date().toISOString(),
+    })
+    .select("id, project_id, device_id")
+    .single();
+
+  if (orderError) {
+    throw new Error(`Order konnte nicht angelegt werden: ${orderError.message}`);
+  }
+
+  await writeAuditLog(supabase, {
+    projectId: order.project_id,
+    action: "order.paid",
+    orderId: order.id,
+    metadata: { payment_method: "override" },
+  });
+  await triggerN8n("wama-pay/order-paid", { order_id: order.id });
+
+  const { data: claimedDevice, error: claimError } = await supabase
+    .from("devices")
+    .update({ status: "busy", current_order_id: order.id })
+    .eq("id", device.id)
+    .eq("status", "free")
+    .select("id")
+    .maybeSingle();
+
+  if (claimError || !claimedDevice) {
+    await writeAuditLog(supabase, {
+      projectId: order.project_id,
+      action: "order.paid_but_device_busy",
+      orderId: order.id,
+      metadata: { device_id: device.id, payment_method: "override" },
+    });
+    return "device_busy";
+  }
+
+  await releaseOrder(supabase, { id: order.id, project_id: order.project_id, device_id: order.device_id });
+  return "released";
+}

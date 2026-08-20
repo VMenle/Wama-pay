@@ -1,0 +1,14 @@
+-- Wama-Pay Schema · Migration 0018
+-- Notfreigabe (Task 11): Hausmeister/Techniker schaltet ein Gerät ohne
+-- Bezahlung frei. Zwei-Faktor: (1) gerätespezifischer geheimer Link/QR-Code
+-- (devices.override_token, wie qr_code_token nur separat), NICHT für Kunden
+-- sichtbar angebracht, UND (2) ein vom Betreiber im Admin-Dashboard
+-- gesetzter PIN (projektweit). Beides zusammen nötig -- ein verlorenes/
+-- geteiltes QR-Foto allein reicht nicht.
+--
+-- Dieser Schritt fügt NUR den neuen Enum-Wert hinzu. Postgres erlaubt es
+-- nicht, einen neu hinzugefügten Enum-Wert in derselben Transaktion zu
+-- verwenden (z.B. in einem CHECK-Constraint), in der er hinzugefügt wurde
+-- ("unsafe use of new value of enum type"). Daher steht alles, was
+-- 'override' tatsächlich benutzt, in der separaten Folge-Migration 0019.
+alter type public.payment_method add value if not exists 'override';

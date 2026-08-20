@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Notfreigabe – Wama-Pay</title>
+<link rel="stylesheet" href="../assets/shared.css">
+</head>
+<body>
+
+<!--
+  Wama-Pay – Notfreigabe (Task 11).
+
+  Nur für Hausmeister/Techniker gedacht. Zwei Faktoren nötig:
+  1. device_id + override_token in der URL -- kommen aus einem
+     gerätespezifischen, geheimen QR-Code, der NICHT für Kunden sichtbar
+     am Gerät angebracht ist (z.B. innen an der Serviceklappe).
+  2. Ein vom Betreiber im Admin-Dashboard gesetzter PIN, hier einzugeben.
+-->
+
+<header class="app-header">
+  <div class="app-navbar">
+    <a href="index.html" class="app-brand"><span class="app-brand-mark"></span>Wama-Pay</a>
+  </div>
+</header>
+
+<main>
+  <div class="wrap-narrow">
+    <div class="page-head">
+      <span class="eyebrow">Notfreigabe</span>
+      <h1 id="title" style="font-size:22px;">Gerät ohne Bezahlung freischalten</h1>
+      <p id="subtitle" style="color:var(--ink-soft);">Nur für autorisiertes Personal. Erfordert den PIN, den der Betreiber vergeben hat.</p>
+    </div>
+
+    <div id="content-root">
+      <div class="card" style="max-width:400px;">
+        <div class="field">
+          <label for="pin">PIN</label>
+          <input type="password" id="pin" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="8" placeholder="••••">
+        </div>
+        <button type="button" class="btn-primary btn-block" id="submit-btn">Gerät freischalten</button>
+        <div class="form-error" id="form-error" style="display:none;"></div>
+        <div class="form-success" id="form-success" style="display:none;"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="../assets/config.js"></script>
+<script src="../assets/supabase-client.js"></script>
+<script>
+  var params = new URLSearchParams(window.location.search);
+  var deviceId = params.get("device");
+  var overrideToken = params.get("token");
+
+  if (!deviceId || !overrideToken) {
+    document.getElementById("content-root").innerHTML =
+      '<div class="notice notice-warn">Ungültiger Link. Bitte den QR-Code am Gerät erneut scannen.</div>';
+  }
+
+  document.getElementById("submit-btn").addEventListener("click", async function () {
+    var btn = document.getElementById("submit-btn");
+    var errorEl = document.getElementById("form-error");
+    var successEl = document.getElementById("form-success");
+    errorEl.style.display = "none";
+    successEl.style.display = "none";
+
+    var pin = document.getElementById("pin").value.trim();
+    if (!pin) return;
+
+    btn.disabled = true;
+    try {
+      var cfg = window.WAMA_PAY_CONFIG;
+      if (!cfg.supabaseUrl || cfg.supabaseUrl.indexOf("TODO_") === 0) {
+        throw new Error("Supabase ist noch nicht konfiguriert.");
+      }
+      var client = await window.wamaSupabaseReady;
+      var { data, error } = await client.functions.invoke("device-override", {
+        body: { device_id: deviceId, override_token: overrideToken, pin: pin },
+      });
+
+      if (error || (data && data.error)) {
+        throw new Error("Ungültiger Code oder PIN.");
+      }
+
+      if (data.result === "device_busy") {
+        successEl.textContent = "Achtung: Gerät ist gerade belegt. Die Notfreigabe wurde protokolliert, aber NICHT ausgelöst.";
+      } else {
+        successEl.textContent = "Gerät wurde freigeschaltet.";
+      }
+      successEl.style.display = "block";
+      document.getElementById("pin").value = "";
+    } catch (err) {
+      errorEl.textContent = err.message || "Fehler bei der Freischaltung.";
+      errorEl.style.display = "block";
+    } finally {
+      btn.disabled = false;
+    }
+  });
+</script>
+
+</body>
+</html>

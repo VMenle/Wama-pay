@@ -115,9 +115,19 @@ Wallet-Zahlung, nicht die Kartenzahlung.
 **Wo kommt das Webhook-Signing-Secret her?** SumUp erzeugt/zeigt dieses
 Secret im Dashboard beim Einrichten der Webhook-Benachrichtigung für einen
 Merchant (nicht pro einzelnem Checkout). Genauer Ort im Dashboard war zum
-Zeitpunkt der Recherche nicht mit letzter Sicherheit zu verifizieren (siehe
-Hinweis unten) -- im Zweifel im SumUp-Dashboard unter "Entwickler"/"API"/
-"Webhooks" suchen oder den SumUp-Support fragen.
+Zeitpunkt der Recherche nicht mit letzter Sicherheit zu verifizieren, und
+im getesteten Account (Stand 20.08.2026) unter "Entwicklereinstellungen"
+(Tabs: Sandboxes, Zahlungs-Wallets, API-Schlüssel, OAuth2-Anwendungen,
+Affiliate Keys) nicht auffindbar -- im Zweifel den SumUp-Support fragen.
+**Fehlt dieses Secret, funktioniert die SumUp-Zahlung trotzdem:**
+`SUMUP_WEBHOOK_SIGNING_SECRET` ist optional -- ist es nicht gesetzt,
+verarbeitet `payment-webhook` eingehende SumUp-Webhooks weiterhin (nur mit
+einer Log-Warnung statt Signaturprüfung), weil der tatsächliche
+Zahlungsstatus ohnehin nie aus dem Webhook-Body übernommen wird, sondern
+immer zusätzlich per eigenem, authentifiziertem GET-Aufruf direkt bei
+SumUp verifiziert wird (siehe `resolveWebhookPayload` in
+`sumupAdapter.ts`). Die Signatur ist also nur zusätzliche Absicherung,
+keine Voraussetzung für die eigentliche Sicherheit.
 
 ## Wie die SumUp-Anbindung funktioniert (Hosted Checkout)
 

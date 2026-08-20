@@ -46,7 +46,7 @@ alter table public.admin_settings enable row level security;
 create or replace function public.set_override_pin(p_project_id uuid, p_pin text)
 returns void
 language plpgsql
-security definer set search_path = public
+security definer set search_path = public, extensions
 as $$
 begin
   if not public.is_admin() then
@@ -75,7 +75,7 @@ grant execute on function public.set_override_pin(uuid, text) to authenticated;
 create or replace function public.verify_override_pin(p_project_id uuid, p_pin text)
 returns boolean
 language plpgsql
-security definer set search_path = public
+security definer set search_path = public, extensions
 as $$
 declare
   v_hash          text;

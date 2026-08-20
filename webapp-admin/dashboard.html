@@ -242,9 +242,9 @@
     panel.innerHTML =
       '<h3 style="font-size:14.5px; margin-bottom:10px;">Gerät bearbeiten: ' + dev.label + '</h3>' +
       '<div class="field"><label>Schaltlink <span class="hint" style="margin:0;">(z.B. Shelly-Cloud-Schaltlink für dieses Gerät)</span></label>' +
-      '<input type="text" id="edit-webhook-url" value="' + (dev.switch_webhook_url || "") + '" placeholder="https://..."></div>' +
+      '<input type="text" id="edit-webhook-url" autocomplete="off" value="' + (dev.switch_webhook_url || "") + '" placeholder="https://..."></div>' +
       '<div class="field"><label>Secret <span class="hint" style="margin:0;">(optional, nur falls der Schaltlink das auswertet)</span></label>' +
-      '<input type="text" id="edit-webhook-secret" value="' + (dev.switch_webhook_secret || "") + '"></div>' +
+      '<input type="text" id="edit-webhook-secret" name="wama-switch-secret" autocomplete="off" value="' + (dev.switch_webhook_secret || "") + '"></div>' +
       '<div style="display:flex; gap:10px;"><button type="button" class="btn-primary" id="edit-save">Speichern</button>' +
       '<button type="button" class="btn-ghost" id="edit-cancel">Abbrechen</button></div>' +
       '<div class="form-error" id="edit-error" style="display:none;"></div>';

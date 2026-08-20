@@ -5,6 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Notfreigabe – Wama-Pay</title>
 <link rel="stylesheet" href="../assets/shared.css">
+<style>
+  .pin-dots { display: flex; justify-content: center; gap: 12px; margin: 22px 0; min-height: 20px; }
+  .pin-dot { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--ink-soft, #888); background: transparent; transition: background .1s, border-color .1s; }
+  .pin-dot.filled { background: var(--brand, #2a4dd0); border-color: var(--brand, #2a4dd0); }
+  .pin-keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 300px; margin: 0 auto; }
+  .pin-key { font-size: 24px; padding: 18px 0; border-radius: 12px; border: 1px solid var(--border, #ddd); background: #fff; cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; }
+  .pin-key:active { background: #eee; }
+  .pin-key.pin-key-wide { font-size: 15px; }
+  .pin-submit { margin-top: 20px; width: 100%; max-width: 300px; margin-left: auto; margin-right: auto; display: block; }
+</style>
 </head>
 <body>
 
@@ -15,7 +25,9 @@
   1. device_id + override_token in der URL -- kommen aus einem
      gerätespezifischen, geheimen QR-Code, der NICHT für Kunden sichtbar
      am Gerät angebracht ist (z.B. innen an der Serviceklappe).
-  2. Ein vom Betreiber im Admin-Dashboard gesetzter PIN, hier einzugeben.
+  2. Ein vom Betreiber im Admin-Dashboard gesetzter PIN, hier per
+     Zahlen-Tastenfeld einzugeben (statt normaler Tastatur -- einfachere
+     Bedienung direkt am Gerät, z.B. mit Handschuhen).
 -->
 
 <header class="app-header">
@@ -29,18 +41,31 @@
     <div class="page-head">
       <span class="eyebrow">Notfreigabe</span>
       <h1 id="title" style="font-size:22px;">Gerät ohne Bezahlung freischalten</h1>
-      <p id="subtitle" style="color:var(--ink-soft);">Nur für autorisiertes Personal. Erfordert den PIN, den der Betreiber vergeben hat.</p>
+      <p id="subtitle" style="color:var(--ink-soft);">Nur für autorisiertes Personal. PIN eingeben, die der Betreiber vergeben hat.</p>
     </div>
 
     <div id="content-root">
-      <div class="card" style="max-width:400px;">
-        <div class="field">
-          <label for="pin">PIN</label>
-          <input type="password" id="pin" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="8" placeholder="••••">
+      <div class="card" style="max-width:400px; text-align:center;">
+        <div class="pin-dots" id="pin-dots"></div>
+
+        <div class="pin-keypad" id="pin-keypad">
+          <button type="button" class="pin-key" data-digit="1">1</button>
+          <button type="button" class="pin-key" data-digit="2">2</button>
+          <button type="button" class="pin-key" data-digit="3">3</button>
+          <button type="button" class="pin-key" data-digit="4">4</button>
+          <button type="button" class="pin-key" data-digit="5">5</button>
+          <button type="button" class="pin-key" data-digit="6">6</button>
+          <button type="button" class="pin-key" data-digit="7">7</button>
+          <button type="button" class="pin-key" data-digit="8">8</button>
+          <button type="button" class="pin-key" data-digit="9">9</button>
+          <button type="button" class="pin-key pin-key-wide" id="pin-clear">Löschen</button>
+          <button type="button" class="pin-key" data-digit="0">0</button>
+          <button type="button" class="pin-key pin-key-wide" id="pin-back">⌫</button>
         </div>
-        <button type="button" class="btn-primary btn-block" id="submit-btn">Gerät freischalten</button>
-        <div class="form-error" id="form-error" style="display:none;"></div>
-        <div class="form-success" id="form-success" style="display:none;"></div>
+
+        <button type="button" class="btn-primary pin-submit" id="submit-btn">Gerät freischalten</button>
+        <div class="form-error" id="form-error" style="display:none; margin-top:14px;"></div>
+        <div class="form-success" id="form-success" style="display:none; margin-top:14px;"></div>
       </div>
     </div>
   </div>
@@ -52,11 +77,43 @@
   var params = new URLSearchParams(window.location.search);
   var deviceId = params.get("device");
   var overrideToken = params.get("token");
+  var MAX_PIN_LENGTH = 8;
+  var pin = "";
 
   if (!deviceId || !overrideToken) {
     document.getElementById("content-root").innerHTML =
       '<div class="notice notice-warn">Ungültiger Link. Bitte den QR-Code am Gerät erneut scannen.</div>';
   }
+
+  function renderDots() {
+    var dotsEl = document.getElementById("pin-dots");
+    dotsEl.innerHTML = "";
+    for (var i = 0; i < Math.max(pin.length, 4); i++) {
+      var dot = document.createElement("span");
+      dot.className = "pin-dot" + (i < pin.length ? " filled" : "");
+      dotsEl.appendChild(dot);
+    }
+  }
+
+  document.querySelectorAll(".pin-key[data-digit]").forEach(function (key) {
+    key.addEventListener("click", function () {
+      if (pin.length >= MAX_PIN_LENGTH) return;
+      pin += key.getAttribute("data-digit");
+      renderDots();
+    });
+  });
+
+  document.getElementById("pin-back").addEventListener("click", function () {
+    pin = pin.slice(0, -1);
+    renderDots();
+  });
+
+  document.getElementById("pin-clear").addEventListener("click", function () {
+    pin = "";
+    renderDots();
+  });
+
+  renderDots();
 
   document.getElementById("submit-btn").addEventListener("click", async function () {
     var btn = document.getElementById("submit-btn");
@@ -65,7 +122,6 @@
     errorEl.style.display = "none";
     successEl.style.display = "none";
 
-    var pin = document.getElementById("pin").value.trim();
     if (!pin) return;
 
     btn.disabled = true;
@@ -89,10 +145,13 @@
         successEl.textContent = "Gerät wurde freigeschaltet.";
       }
       successEl.style.display = "block";
-      document.getElementById("pin").value = "";
+      pin = "";
+      renderDots();
     } catch (err) {
       errorEl.textContent = err.message || "Fehler bei der Freischaltung.";
       errorEl.style.display = "block";
+      pin = "";
+      renderDots();
     } finally {
       btn.disabled = false;
     }

@@ -58,18 +58,18 @@ create policy products_admin_all on public.products
 
 -- ---------------------------------------------------------------------------
 -- Platzhalter-Mechanismus für die physische Geräte-Freigabe: ein pro Gerät
--- hinterlegter Webhook/Weblink, der beim Freigeben (releaseOrder) mit
--- { device_id, action: "on" } per POST aufgerufen wird. Fehlt er, bleibt
--- die Freigabe -- wie bisher -- rein digital (nur Datenbank-Status), mit
--- einer Warnung im Log. switch_webhook_secret wird als Header mitgeschickt,
--- damit der Empfänger (n8n, ein kleiner Vermittlungsdienst, o.ä.) den
--- Aufruf verifizieren kann.
+-- hinterlegter Webhook/Weblink (Schaltlink, z.B. Shelly Cloud), der beim
+-- Freigeben (releaseOrder) per einfachem GET ohne Body aufgerufen wird.
+-- Fehlt er, bleibt die Freigabe -- wie bisher -- rein digital (nur
+-- Datenbank-Status), mit einer Warnung im Log. switch_webhook_secret wird
+-- als Header mitgeschickt, damit der Empfänger (n8n, ein kleiner
+-- Vermittlungsdienst, o.ä.) den Aufruf verifizieren kann.
 -- ---------------------------------------------------------------------------
 alter table public.devices
   add column switch_webhook_url text,
   add column switch_webhook_secret text;
 
 comment on column public.devices.switch_webhook_url is
-  'Platzhalter-Mechanismus fuer die physische Freigabe: wird bei Order-Freigabe per POST mit {device_id, action:"on"} aufgerufen. NULL = keine physische Ansteuerung (nur digitaler Status). Ueber die Admin-Webapp gepflegt.';
+  'Platzhalter-Mechanismus fuer die physische Freigabe: wird bei Order-Freigabe per einfachem GET (ohne Body) aufgerufen -- z.B. ein Shelly-Cloud-Schaltlink. NULL = keine physische Ansteuerung (nur digitaler Status). Ueber die Admin-Webapp gepflegt.';
 comment on column public.devices.switch_webhook_secret is
   'Wird als Header X-Wama-Pay-Switch-Secret beim Aufruf von switch_webhook_url mitgeschickt, damit der Empfaenger den Aufruf verifizieren kann.';

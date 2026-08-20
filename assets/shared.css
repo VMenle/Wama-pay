@@ -29,7 +29,10 @@ body{
   background:var(--blue-light);
   line-height:1.55;
   min-height:100vh;
+  display:flex;
+  flex-direction:column;
 }
+body > main{flex:1 0 auto;}
 a{color:inherit;}
 img,svg{display:block; max-width:100%;}
 .wrap{max-width:1120px; margin:0 auto; padding:0 20px;}

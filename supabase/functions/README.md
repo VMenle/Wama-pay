@@ -91,7 +91,7 @@ Zugangsdaten etc.).
 | `SUMUP_API_KEY` | SumUp-API-Schlüssel |
 | `SUMUP_MERCHANT_CODE` | SumUp-Merchant-Code |
 | `SUMUP_WEBHOOK_SIGNING_SECRET` | Signing-Secret aus dem SumUp-Dashboard (für die HMAC-SHA256-Webhook-Signaturprüfung, Header `x-payload-signature`) |
-| `WAMA_PAY_CHECKOUT_BASE_URL` | Basis-URL der Checkout-Webapp, z.B. `https://vmenle.github.io/wama-pay/webapp-checkout` (wird für die Rückleitungs-URL nach der SumUp-Zahlung gebraucht) |
+| `WAMA_PAY_CHECKOUT_BASE_URL` | Basis-URL der Checkout-Webapp, z.B. `https://wamapay.netlify.app/webapp-checkout` (wird für die Rückleitungs-URL nach der SumUp-Zahlung gebraucht) |
 | `WAMA_PAY_N8N_BASE_URL` | z.B. `https://<n8n-host>/webhook` |
 | `WAMA_PAY_ALLOWED_ORIGIN` | Domain der Checkout-Webapp (für CORS) |
 
@@ -101,9 +101,9 @@ Zugangsdaten etc.).
 supabase secrets set SUMUP_API_KEY=...
 supabase secrets set SUMUP_MERCHANT_CODE=...
 supabase secrets set SUMUP_WEBHOOK_SIGNING_SECRET=...
-supabase secrets set WAMA_PAY_CHECKOUT_BASE_URL=https://vmenle.github.io/wama-pay/webapp-checkout
+supabase secrets set WAMA_PAY_CHECKOUT_BASE_URL=https://wamapay.netlify.app/webapp-checkout
 supabase secrets set WAMA_PAY_N8N_BASE_URL=https://<n8n-host>/webhook
-supabase secrets set WAMA_PAY_ALLOWED_ORIGIN=https://<checkout-webapp-domain>
+supabase secrets set WAMA_PAY_ALLOWED_ORIGIN=https://wamapay.netlify.app
 ```
 
 `SUPABASE_URL` und `SUPABASE_SERVICE_ROLE_KEY` werden von der Supabase-

@@ -5,9 +5,10 @@
 // PayPal-"Payment Button" (mit QR-Code), einmalig im PayPal-Business-
 // Account des Betreibers angelegt -- kein API-Aufruf unsererseits nötig,
 // um ihn zu erstellen. Dafür MUSS beim Anlegen des Buttons ein
-// verstecktes Feld "custom" (oder "item_number") auf die Wama-Pay
-// devices.id dieser Maschine gesetzt werden -- darüber ordnen wir die
-// eingehende Zahlung dem richtigen Gerät zu.
+// verstecktes Feld "custom" (oder "item_number") auf den Wama-Pay
+// devices.device_code dieser Maschine gesetzt werden (kurzer, menschen-
+// lesbarer Code wie "AA111", siehe Migration 0023 -- NICHT die interne
+// UUID) -- darüber ordnen wir die eingehende Zahlung dem richtigen Gerät zu.
 //
 // Ablauf: Kunde scannt den QR-Code, zahlt direkt auf PayPals Seite, PayPal
 // schickt anschließend eine klassische IPN (Instant Payment Notification)
@@ -71,11 +72,11 @@ export const paypalAdapter: PaymentProviderAdapter = {
   async resolveWebhookPayload(rawBody: string): Promise<UnifiedWebhookPayload> {
     const params = new URLSearchParams(rawBody);
 
-    const deviceId = params.get("custom") || params.get("item_number");
+    const deviceCode = params.get("custom") || params.get("item_number");
     const txnId = params.get("txn_id");
     const paymentStatus = params.get("payment_status") ?? "";
 
-    if (!deviceId) {
+    if (!deviceCode) {
       throw new Error(`PayPal-IPN ohne 'custom'/'item_number' (Geräte-Referenz fehlt): ${rawBody}`);
     }
     if (!txnId) {
@@ -88,7 +89,7 @@ export const paypalAdapter: PaymentProviderAdapter = {
 
     return {
       mode: "create_order_for_device",
-      ref: deviceId,
+      ref: deviceCode,
       status,
       amountCents: Math.round(Number(params.get("mc_gross") ?? "0") * 100),
       currency: String(params.get("mc_currency") ?? "EUR"),

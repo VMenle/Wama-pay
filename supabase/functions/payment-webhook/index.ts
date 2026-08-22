@@ -69,7 +69,7 @@ Deno.serve(async (req: Request) => {
 
     try {
       const result = await createAndReleaseOrderForDevice(supabase, {
-        deviceId: payload.ref,
+        deviceCode: payload.ref,
         providerId,
         providerRef: payload.providerTransactionId ?? payload.ref,
         amountCents: payload.amountCents,

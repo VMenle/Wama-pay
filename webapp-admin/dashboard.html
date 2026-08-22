@@ -79,8 +79,8 @@
 
   async function reloadAll() {
     var [locRes, devRes, prodRes, overrideRes] = await Promise.all([
-      client.from("locations").select("id, name, address").eq("project_id", projectId).order("name"),
-      client.from("devices").select("id, type, label, status, location_id, switch_webhook_url, switch_webhook_secret, override_token").eq("project_id", projectId).order("label"),
+      client.from("locations").select("id, name, address, short_code").eq("project_id", projectId).order("name"),
+      client.from("devices").select("id, device_code, type, label, status, location_id, switch_webhook_url, switch_webhook_secret, override_token").eq("project_id", projectId).order("label"),
       client.from("products").select("id, device_type, location_id, name, price_cents, currency, is_active").eq("project_id", projectId).order("device_type"),
       // devices!orders_device_id_fkey: orders und devices haben ZWEI Fremdschlüssel
       // zueinander (orders.device_id -> devices.id UND devices.current_order_id ->
@@ -123,11 +123,12 @@
     section.appendChild(el("p", { class: "hint", text: "Ein Standort fasst mehrere Geräte zusammen (z.B. eine Waschküche)." }));
 
     var table = el("table", { class: "admin-table" });
-    table.innerHTML = "<thead><tr><th>Name</th><th>Adresse</th></tr></thead>";
+    table.innerHTML = "<thead><tr><th>Name</th><th>Kürzel</th><th>Adresse</th></tr></thead>";
     var tbody = el("tbody");
     locations.forEach(function (loc) {
       tbody.appendChild(el("tr", {}, [
         el("td", { text: loc.name }),
+        el("td", { text: loc.short_code || "—", style: "font-weight:700;" }),
         el("td", { text: loc.address || "—" }),
       ]));
     });
@@ -157,7 +158,7 @@
   function renderDevicesSection() {
     var section = el("section", { class: "admin-section" });
     section.appendChild(el("h2", { text: "Geräte" }));
-    section.appendChild(el("p", { class: "hint", text: "Die Geräte-ID brauchen Sie für den QR-Code am Gerät (pay.html?device=...) bzw. das custom-Feld im PayPal-Button." }));
+    section.appendChild(el("p", { class: "hint", text: "Den Gerätecode (z.B. \"AA111\") brauchen Sie für den QR-Code am Gerät (pay.html?device=...) und das custom-Feld im PayPal-Button -- wird automatisch vergeben." }));
 
     var filterField = el("div", { class: "field", style: "max-width:260px; margin-bottom:12px;" });
     var filterLabel = el("label", { text: "Nach Standort filtern" });
@@ -177,7 +178,7 @@
     section.appendChild(filterField);
 
     var table = el("table", { class: "admin-table" });
-    table.innerHTML = "<thead><tr><th>Bezeichnung</th><th>Typ</th><th>Standort</th><th>Status</th><th>Geräte-ID</th><th>Schaltlink</th><th>Notfreigabe</th><th></th></tr></thead>";
+    table.innerHTML = "<thead><tr><th>Bezeichnung</th><th>Typ</th><th>Standort</th><th>Status</th><th>Code</th><th>Geräte-ID</th><th>Schaltlink</th><th>Notfreigabe</th><th></th></tr></thead>";
     var tbody = el("tbody");
 
     var visibleDevices = deviceLocationFilter
@@ -185,6 +186,18 @@
       : devices;
 
     visibleDevices.forEach(function (dev) {
+      var codeCell = el("td");
+      var codeCopy = el("span", { class: "id-copy", text: dev.device_code || "—", style: "font-weight:700;", title: dev.device_code ? "Klicken zum Kopieren: " + dev.device_code : "" });
+      if (dev.device_code) {
+        codeCopy.addEventListener("click", function () {
+          navigator.clipboard.writeText(dev.device_code).then(function () {
+            codeCopy.textContent = "kopiert!";
+            setTimeout(function () { codeCopy.textContent = dev.device_code; }, 1200);
+          });
+        });
+      }
+      codeCell.appendChild(codeCopy);
+
       var idCell = el("td");
       var idCode = el("span", { class: "id-copy", text: dev.id.slice(0, 8) + "…", title: "Klicken zum Kopieren: " + dev.id });
       idCode.addEventListener("click", function () {
@@ -238,6 +251,7 @@
         el("td", { text: DEVICE_TYPE_LABELS[dev.type] || dev.type }),
         el("td", { text: locationName(dev.location_id) }),
         statusTd,
+        codeCell,
         idCell,
         webhookTd,
         overrideTd,
@@ -266,10 +280,10 @@
       var { data, error } = await client.from("devices").insert({
         project_id: projectId, location_id: locationId, type: type, label: label,
         qr_code_token: qrToken, status: "free",
-      }).select("id").single();
+      }).select("id, device_code").single();
       if (error) { alert("Fehler: " + error.message); return; }
       await reloadAll();
-      alert("Gerät angelegt. Geräte-ID: " + data.id + "\n\nDiese ID brauchen Sie für den QR-Code (pay.html?device=" + data.id + ") und ggf. das PayPal custom-Feld.");
+      alert("Gerät angelegt. Code: " + data.device_code + "\n\nDiesen Code brauchen Sie für den QR-Code (pay.html?device=" + data.device_code + ") und das PayPal custom-Feld.");
     });
     section.appendChild(form);
 

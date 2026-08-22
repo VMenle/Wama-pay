@@ -13,7 +13,8 @@ Die Zahlungsbestätigung kommt asynchron über `payment-webhook`.
 
 ## pay.html (fest aufgehängter QR-Code)
 
-`webapp-checkout/pay.html?device=<devices.id>` ist der Ziel-Link für einen
+`webapp-checkout/pay.html?device=<devices.device_code>` (z.B. "AA111", siehe
+Migration 0023 -- die interne UUID `devices.id` funktioniert ebenfalls) ist der Ziel-Link für einen
 **dauerhaft am Gerät angebrachten, gedruckten** SumUp-QR-Code (im
 Unterschied zu `bezahlen.html`, wo der Kunde erst ein Gerät und eine
 Zahlweise auswählt). Der Link/QR-Code selbst ändert sich nie -- die Seite
@@ -163,8 +164,9 @@ dauerhaft am Gerät angebrachten **Payment Button** (mit QR-Code):
 
 1. Im PayPal-Business-Account einen Payment Button pro Gerät anlegen, dabei:
    - **Betrag fest** auf den Preis des jeweiligen Geräts einstellen
-   - Verstecktes Feld **`custom`** (oder `item_number`) auf die Wama-Pay
-     `devices.id` **dieser** Maschine setzen -- darüber ordnen wir die
+   - Verstecktes Feld **`custom`** (oder `item_number`) auf den Wama-Pay
+     `devices.device_code` **dieser** Maschine setzen (z.B. "AA111", siehe
+     Migration 0023 -- NICHT die interne UUID) -- darüber ordnen wir die
      eingehende Zahlung dem richtigen Gerät zu
    - Unter Account-Einstellungen -> **"Instant Payment Notifications"** die
      Benachrichtigungs-URL auf `.../payment-webhook?provider=paypal` setzen

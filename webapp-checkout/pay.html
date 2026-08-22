@@ -13,16 +13,18 @@
 
   Diese Seite ist bewusst für einen DAUERHAFT am Gerät angebrachten,
   gedruckten QR-Code gedacht: der Link/QR selbst ändert sich nie
-  (webapp-checkout/pay.html?device=<devices.id>), erzeugt aber bei jedem
-  Aufruf im Hintergrund automatisch eine frische SumUp-Zahlungssession
-  für genau dieses Gerät und leitet sofort dorthin weiter -- kein manueller
+  (webapp-checkout/pay.html?device=<devices.device_code>, z.B. "AA111" --
+  siehe Migration 0023; die interne UUID funktioniert ebenfalls, der kurze
+  Code ist nur leichter abzulesen/abzutippen), erzeugt aber bei jedem Aufruf
+  im Hintergrund automatisch eine frische SumUp-Zahlungssession für genau
+  dieses Gerät und leitet sofort dorthin weiter -- kein manueller
   Auswahlschritt wie in bezahlen.html. Damit lässt sich der 30-Minuten-
   Ablauf einer einzelnen Hosted-Checkout-Session umgehen, ohne dass der
   Betreiber je einen neuen QR-Code drucken muss.
 
   QR-Code für dieses Gerät erzeugen: einfach einen QR-Code-Generator auf
   genau diese URL zeigen lassen, z.B.
-  https://wamapay.netlify.app/webapp-checkout/pay.html?device=<devices.id>
+  https://wamapay.netlify.app/webapp-checkout/pay.html?device=AA111
 -->
 
 <header class="app-header">

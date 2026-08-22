@@ -61,11 +61,14 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: "login_required", detail: "Guthaben-Zahlung erfordert ein eingeloggtes Kundenkonto." }, 401);
   }
 
-  // Gerät + Produkt (Preis) laden.
+  // Gerät + Produkt (Preis) laden. deviceId kann entweder die interne UUID
+  // (devices.id, z.B. aus einem älteren QR-Code) oder der kurze,
+  // menschenlesbare device_code (z.B. "AA111", siehe Migration 0023) sein.
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(deviceId);
   const { data: device, error: deviceError } = await supabase
     .from("devices")
     .select("id, type, label, status, project_id, location_id")
-    .eq("id", deviceId)
+    .eq(isUuid ? "id" : "device_code", deviceId)
     .single();
 
   if (deviceError || !device) {

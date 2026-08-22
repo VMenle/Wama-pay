@@ -213,7 +213,7 @@ export type CreateOrderForDeviceResult = "released" | "paid_device_busy" | "dupl
 export async function createAndReleaseOrderForDevice(
   supabase: SupabaseClient,
   params: {
-    deviceId: string;
+    deviceCode: string; // devices.device_code, z.B. "AA111" -- kommt aus dem PayPal-'custom'-Feld
     providerId: string;
     providerRef: string; // eindeutige Provider-Transaktions-Id
     amountCents: number;
@@ -223,11 +223,11 @@ export async function createAndReleaseOrderForDevice(
   const { data: device, error: deviceError } = await supabase
     .from("devices")
     .select("id, type, location_id, project_id, status")
-    .eq("id", params.deviceId)
+    .eq("device_code", params.deviceCode)
     .single();
 
   if (deviceError || !device) {
-    throw new Error(`Gerät '${params.deviceId}' nicht gefunden: ${deviceError?.message}`);
+    throw new Error(`Gerät mit Code '${params.deviceCode}' nicht gefunden: ${deviceError?.message}`);
   }
 
   const { data: products, error: productsError } = await supabase
@@ -239,7 +239,7 @@ export async function createAndReleaseOrderForDevice(
     .or(`location_id.eq.${device.location_id},location_id.is.null`);
 
   if (productsError || !products || products.length === 0) {
-    throw new Error(`Kein aktives Produkt für Gerät '${params.deviceId}' konfiguriert.`);
+    throw new Error(`Kein aktives Produkt für Gerät '${params.deviceCode}' konfiguriert.`);
   }
   const product = products.find((p) => p.location_id === device.location_id) ?? products[0];
 

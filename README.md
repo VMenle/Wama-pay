@@ -94,11 +94,12 @@ Ab jetzt über `webapp-admin/dashboard.html` statt per SQL:
 
 ### 6. Zahlungswege pro Gerät einrichten
 
-- **SumUp:** QR-Code auf `webapp-checkout/pay.html?device=<devices.id>`
+- **SumUp:** QR-Code auf `webapp-checkout/pay.html?device=<devices.device_code>`
+  (z.B. "AA111", steht im Admin-Dashboard in der Spalte "Code")
   drucken und dauerhaft am Gerät anbringen (der Link ändert sich nie, siehe
   [`supabase/functions/README.md`](supabase/functions/README.md#payhtml-fest-aufgehängter-qr-code)).
 - **PayPal:** im PayPal-Business-Account einen Payment Button pro Gerät
-  anlegen (fester Betrag, verstecktes `custom`-Feld = `devices.id`, IPN-URL
+  anlegen (fester Betrag, verstecktes `custom`-Feld = `devices.device_code`, IPN-URL
   = `.../payment-webhook?provider=paypal`), QR-Code drucken und anbringen —
   Schritt-für-Schritt-Anleitung in
   [`supabase/functions/README.md`](supabase/functions/README.md#wie-die-paypal-anbindung-funktioniert-statischer-payment-button--ipn).
@@ -152,13 +153,13 @@ einem testweise angelegten Gerät ohne angeschlossene Hardware.
 - [ ] Order-Status wird `paid`, Gerät wird als `busy` markiert, Schaltlink wird aufgerufen (im Log/Protokoll sichtbar), Beleg-Mail kommt an (falls n8n eingerichtet).
 
 ### SumUp
-- [ ] QR-Code/Link `pay.html?device=<id>` scannen, SumUp-Zahlungsseite öffnet sich (Link **und** QR-Anzeige in `verarbeitung.html` prüfen).
+- [ ] QR-Code/Link `pay.html?device=<code>` scannen, SumUp-Zahlungsseite öffnet sich (Link **und** QR-Anzeige in `verarbeitung.html` prüfen).
 - [ ] Testzahlung abschließen, `payment-webhook?provider=sumup` wird aufgerufen, Order-Status wird `paid`.
 - [ ] Gerät schaltet sich frei (bzw. Schaltlink-Aufruf im Protokoll sichtbar).
 - [ ] Abgelaufene/abgebrochene Zahlung führt nicht zu einer fälschlich freigeschalteten Order.
 
 ### PayPal
-- [ ] Payment Button mit korrektem `custom`-Feld (Test-`devices.id`) und IPN-URL erzeugen.
+- [ ] Payment Button mit korrektem `custom`-Feld (Test-`device_code`) und IPN-URL erzeugen.
 - [ ] Testzahlung auslösen, prüfen dass die IPN bei `payment-webhook?provider=paypal` ankommt und die Postback-Verifikation (`VERIFIED`) durchläuft.
 - [ ] Order wird rückwirkend angelegt, Status `paid`, Gerät wird freigegeben.
 - [ ] Zahlung auf ein bereits belegtes Gerät: Order wird trotzdem verbucht, aber **nicht** freigegeben (`paid_device_busy` im `audit_log` sichtbar) — bewusstes Verhalten, keine Fehlfunktion.

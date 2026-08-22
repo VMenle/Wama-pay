@@ -3,9 +3,12 @@
 Diese Workflows übernehmen die Folgeaufgaben, die bewusst **nicht** in der
 Edge Function `payment-webhook` liegen (siehe
 `docs/payment-provider-adapter.md`, Abschnitt "Was bewusst NICHT
-providerspezifisch ist"): Beleg-Mail, Erkennung "Waschgang fertig" (Gerät
-wieder freigeben + optionale Benachrichtigung) und das Aufräumen abgelaufener,
-unbezahlter Reservierungen.
+providerspezifisch ist"): Beleg-Mail und Erkennung "Waschgang fertig" (Gerät
+wieder freigeben + optionale Benachrichtigung).
+
+Das Aufräumen abgelaufener, unbezahlter Reservierungen läuft **nicht** über
+n8n, sondern direkt in der Datenbank per `pg_cron` (Migration 0022) -- kein
+Webhook-Umweg nötig, siehe `supabase/migrations/0022_reservation_timeout_pg_cron.sql`.
 
 Die Edge Function `payment-webhook` (siehe `supabase/functions/`) ruft die
 Webhook-Workflows per HTTP POST auf, nachdem sie den Order-Status
@@ -18,8 +21,6 @@ serverseitig geändert hat.
 | `workflows/order-paid-receipt.json` | Webhook `POST /wama-pay/order-paid` | Zahlungsbeleg per E-Mail, nur wenn ein Kundenkonto mit hinterlegter E-Mail existiert (anonymer Checkout erhält seinen Beleg von SumUp direkt). |
 | `workflows/order-released-notify-fertig.json` | Webhook `POST /wama-pay/order-released` | Wartet **entweder** auf ein externes "Waschgang fertig"-Signal (siehe unten) **oder** maximal 2 Stunden (Timeout-Fallback), gibt danach das Gerät wieder frei und verschickt — sofern der Kunde eingeloggt war **und** `customer_notification_settings.notify_on_release = true` — die "Maschine fertig"-E-Mail. |
 | `workflows/device-finished-signal.json` | Webhook `POST /wama-pay/device-finished` (statischer Endpunkt, z.B. vom Shelly-Skript aufgerufen) | Weckt die zu diesem Gerät wartende Ausführung von `order-released-notify-fertig` vorzeitig auf, statt auf den 2h-Timeout zu warten. |
-| `workflows/reservation-timeout-immediate.json` | Webhook `POST /wama-pay/reservation-created` (von `create-checkout` bei jeder Provider-Reservierung ausgelöst) | Wartet genau 15 Minuten (= `RESERVATION_WINDOW_MINUTES` in `create-checkout/index.ts`) und ruft danach `expire_stale_reservations()` auf -- räumt eine abgebrochene Zahlung sofort auf, statt bis zur nächsten Zeitplan-Ausführung zu warten. |
-| `workflows/reservation-timeout-guard.json` | Schedule (stündlich) | Sicherheitsnetz zu `reservation-timeout-immediate.json`: ruft ebenfalls `expire_stale_reservations()` (Migration 0011) auf und räumt alles auf, was der einzelne Sofort-Trigger aus irgendeinem Grund verpasst hat (z.B. n8n kurz nicht erreichbar beim Reservieren). |
 
 ### Wie das Fertig-Signal funktioniert
 
@@ -39,7 +40,7 @@ ausbleibt oder gar kein Sensor angeschlossen ist.
 ## Setup
 
 Die Supabase-URL (`https://qhnqselrrawmgcrpuazx.supabase.co`) und das
-Signal-Secret sind direkt in den vier JSON-Dateien fest eingetragen (keine
+Signal-Secret sind direkt in den drei JSON-Dateien fest eingetragen (keine
 Umgebungsvariablen nötig) -- Setup läuft also komplett über die n8n-
 Weboberfläche, kein Server-/Terminal-Zugriff nötig:
 
@@ -54,7 +55,7 @@ Weboberfläche, kein Server-/Terminal-Zugriff nötig:
 
    Ein einzelner `apikey`-Header genügt -- Supabase leitet daraus
    automatisch die passende Berechtigung ab, ein zusätzlicher
-   `Authorization`-Header ist nicht nötig. Die HTTP-Request-Nodes in den vier
+   `Authorization`-Header ist nicht nötig. Die HTTP-Request-Nodes in den drei
    JSON-Dateien sind bereits so vorkonfiguriert, dass sie diesen Credential
    automatisch verwenden (Feld "Authentication" → "Predefined Credential
    Type" ist absichtlich NICHT gesetzt, sondern der generische "Header Auth"
@@ -63,7 +64,7 @@ Weboberfläche, kein Server-/Terminal-Zugriff nötig:
    zuordnet).
 2. **SMTP-Credential** mit Namen **`Wama-Pay SMTP`** anlegen (Absenderadresse
    z. B. `info@energy-leisure.de`) — wird von den "Send Email"-Nodes genutzt.
-3. Alle vier JSON-Dateien in n8n importieren (*Import from File*), die
+3. Alle drei JSON-Dateien in n8n importieren (*Import from File*), die
    Credentials in den jeweiligen Nodes zuweisen, Webhook-Workflows aktivieren
    und die erzeugten Produktions-Webhook-URLs notieren — `order-paid` und
    `order-released` werden von der Edge Function `payment-webhook`
@@ -77,11 +78,15 @@ an **beiden** Stellen gleichzeitig ändern.
 
 ## Bewusste Design-Entscheidungen
 
-- **Kein Client-seitiges Secret:** Alle drei Workflows sprechen mit Supabase
-  ausschließlich über den Service-Role-Key, niemals über den anon-Key. Die
-  RPC `expire_stale_reservations()` ist deshalb in Migration 0011 explizit
-  für `anon`/`authenticated` gesperrt (`revoke all ... from public, anon,
-  authenticated`).
+- **Kein Client-seitiges Secret:** Die verbliebenen n8n-Workflows sprechen mit
+  Supabase ausschließlich über den Service-Role-Key, niemals über den
+  anon-Key.
+- **Reservierungs-Timeout läuft bewusst nicht über n8n:** anders als
+  "Waschgang fertig" (das auf ein externes, physisches Signal wartet) hat das
+  Reservierungs-Timeout keinen externen Auslöser -- es ist reine
+  Zeitablauf-Logik innerhalb der Datenbank. Dafür pg_cron zu nutzen (Migration
+  0022) ist einfacher und robuster als ein n8n-Umweg: kein Webhook, kein
+  Credential, kein zusätzlicher Ausfallpunkt.
 - **Anonymer Checkout bekommt keine "Maschine fertig"-Mail:** Ohne
   Kundenkonto gibt es keine E-Mail-Adresse, an die zuverlässig zugestellt
   werden könnte — das Feature ist bewusst an ein Konto gebunden (siehe
@@ -94,7 +99,8 @@ an **beiden** Stellen gleichzeitig ändern.
 - **Abgerechnet wird weiterhin ausschließlich pro Nutzung** (siehe
   `products.price_cents`), nicht nach Zeit — das Fertig-Signal hat keinerlei
   Einfluss auf den Preis.
-- **Timeout-Wächter greift nur bei nie bestätigter Zahlung:** Orders, die erst
+- **pg_cron greift nur bei nie bestätigter Zahlung:** Orders, die erst
   nach Ablauf des Zeitfensters doch noch als bezahlt gemeldet werden, laufen
   über den separaten Refund-Pfad (`orders.status = 'refund_pending'`), den die
-  Edge Function (Task 6) behandelt — der n8n-Wächter fasst solche Orders nicht an.
+  Edge Function (Task 6) behandelt — `expire_stale_reservations()` fasst
+  solche Orders nicht an.

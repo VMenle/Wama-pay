@@ -19,7 +19,7 @@ Unter-READMEs — hier geht es um den Gesamtüberblick.
 | `webapp-checkout/` | Öffentliche Bezahlseite (kein Login nötig) — Gerät/Zahlweise wählen, SumUp/PayPal/QR anzeigen |
 | `webapp-customer/` | Kunden-Login-Bereich — Wallet, Bestellhistorie, Benachrichtigungseinstellungen |
 | `webapp-admin/` | Admin-Bereich (nur für `admin_users`) — Standorte/Geräte/Preise pflegen, Notfreigabe-PIN setzen, Override-QR erzeugen, Notfreigabe-Protokoll einsehen |
-| `n8n/` | Workflows für Beleg-Mail, "Maschine fertig"-Erkennung, Reservierungs-Timeout — siehe [`n8n/README.md`](n8n/README.md) |
+| `n8n/` | Workflows für Beleg-Mail und "Maschine fertig"-Erkennung — siehe [`n8n/README.md`](n8n/README.md) |
 | `shelly/` | Skript für Shelly-Smart-Plugs, erkennt per Leistungsmessung, wann ein Waschgang fertig ist — siehe [`shelly/README.md`](shelly/README.md) |
 | `docs/payment-provider-adapter.md` | Architektur der Zahlungsanbieter-Abstraktion (SumUp/PayPal hinter einem gemeinsamen Interface) |
 
@@ -176,4 +176,4 @@ einem testweise angelegten Gerät ohne angeschlossene Hardware.
 - [ ] Ohne jedes Signal: nach 2 Stunden greift der Timeout-Fallback trotzdem.
 
 ### Reservierungs-Timeout
-- [ ] Checkout starten, aber nicht bezahlen: nach Ablauf des Zeitfensters wird die Reservierung automatisch `expired`, Gerät wird wieder frei (läuft über den 5-Minuten-Schedule-Workflow).
+- [ ] Checkout starten, aber nicht bezahlen: nach Ablauf des Zeitfensters (15 Min) wird die Reservierung automatisch `expired`, Gerät wird wieder frei (läuft per `pg_cron` direkt in der Datenbank, siehe Migration 0022 — kein n8n nötig).

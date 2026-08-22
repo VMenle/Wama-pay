@@ -10,7 +10,7 @@ function n8nBaseUrl(): string | null {
   return Deno.env.get("WAMA_PAY_N8N_BASE_URL");
 }
 
-export async function triggerN8n(path: string, body: Record<string, unknown>) {
+async function triggerN8n(path: string, body: Record<string, unknown>) {
   const base = n8nBaseUrl();
   if (!base) {
     console.warn(`WAMA_PAY_N8N_BASE_URL nicht gesetzt -- n8n-Trigger '${path}' wird übersprungen.`);

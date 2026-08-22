@@ -188,9 +188,16 @@ Deno.serve(async (req: Request) => {
       .update({ status: "payment_pending", provider_ref: checkout.providerRef })
       .eq("id", order.id);
 
-    // Aufräumen abgelaufener, unbezahlter Reservierungen läuft direkt in
-    // der Datenbank per pg_cron (Migration 0022) -- kein n8n-Trigger von
-    // hier aus nötig.
+    // Plant einen einmaligen pg_cron-Job exakt zum Ablauf der Reservierung
+    // (Migration 0022) -- räumt die Order automatisch auf, falls die
+    // Zahlung bis dahin nicht bestätigt wurde. Fehlschlag hier blockiert
+    // den Zahlungsablauf selbst nicht, wird nur geloggt.
+    const { error: scheduleError } = await supabase.rpc("schedule_reservation_expiry_check", {
+      p_run_at: reservationExpiresAt,
+    });
+    if (scheduleError) {
+      console.error(`Reservierungs-Timeout konnte nicht eingeplant werden (order ${order.id}):`, scheduleError.message);
+    }
 
     return jsonResponse({
       order_id: order.id,

@@ -12,7 +12,10 @@
       "name": "Webhook: Order Paid",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [-800, 0],
+      "position": [
+        -800,
+        0
+      ],
       "webhookId": "wama-pay-order-paid"
     },
     {
@@ -22,26 +25,33 @@
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
-            { "name": "id", "value": "=eq.{{$json.body.order_id}}" },
-            { "name": "select", "value": "id,amount_cents,currency,paid_at,customers(email,full_name),products(name),devices(label)" }
+            {
+              "name": "id",
+              "value": "=eq.{{$json.body.order_id}}"
+            },
+            {
+              "name": "select",
+              "value": "id,amount_cents,currency,paid_at,customers(email,full_name),products(name),devices(label)"
+            }
           ]
         },
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            { "name": "apikey", "value": "={{$credentials.supabaseServiceRole.apiKey}}" },
-            { "name": "Authorization", "value": "=Bearer {{$credentials.supabaseServiceRole.apiKey}}" }
-          ]
-        },
-        "options": {}
+        "options": {},
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
       },
       "id": "http-load-order",
       "name": "Order + Kunde laden",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [-560, 0],
+      "position": [
+        -560,
+        0
+      ],
       "credentials": {
-        "httpHeaderAuth": { "id": "supabase-service-role", "name": "Supabase Service Role" }
+        "httpHeaderAuth": {
+          "id": "supabase-service-role",
+          "name": "Supabase Service Role"
+        }
       }
     },
     {
@@ -52,18 +62,28 @@
       "name": "Order-Datensatz entpacken",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-320, 0]
+      "position": [
+        -320,
+        0
+      ]
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
           "conditions": [
             {
               "id": "has-customer-email",
               "leftValue": "={{$json.customers?.email}}",
               "rightValue": "",
-              "operator": { "type": "string", "operation": "notEmpty" }
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
             }
           ],
           "combinator": "and"
@@ -74,7 +94,10 @@
       "name": "Kunde mit E-Mail?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [-80, 0]
+      "position": [
+        -80,
+        0
+      ]
     },
     {
       "parameters": {
@@ -89,9 +112,15 @@
       "name": "Beleg-Mail senden",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
-      "position": [180, -100],
+      "position": [
+        180,
+        -100
+      ],
       "credentials": {
-        "smtp": { "id": "wama-pay-smtp", "name": "Wama-Pay SMTP" }
+        "smtp": {
+          "id": "wama-pay-smtp",
+          "name": "Wama-Pay SMTP"
+        }
       }
     },
     {
@@ -100,20 +129,67 @@
       "name": "Anonymer Checkout – kein Beleg per Mail",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [180, 120]
+      "position": [
+        180,
+        120
+      ]
     }
   ],
   "connections": {
-    "Webhook: Order Paid": { "main": [[{ "node": "Order + Kunde laden", "type": "main", "index": 0 }]] },
-    "Order + Kunde laden": { "main": [[{ "node": "Order-Datensatz entpacken", "type": "main", "index": 0 }]] },
-    "Order-Datensatz entpacken": { "main": [[{ "node": "Kunde mit E-Mail?", "type": "main", "index": 0 }]] },
+    "Webhook: Order Paid": {
+      "main": [
+        [
+          {
+            "node": "Order + Kunde laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Order + Kunde laden": {
+      "main": [
+        [
+          {
+            "node": "Order-Datensatz entpacken",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Order-Datensatz entpacken": {
+      "main": [
+        [
+          {
+            "node": "Kunde mit E-Mail?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Kunde mit E-Mail?": {
       "main": [
-        [{ "node": "Beleg-Mail senden", "type": "main", "index": 0 }],
-        [{ "node": "Anonymer Checkout – kein Beleg per Mail", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Beleg-Mail senden",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Anonymer Checkout – kein Beleg per Mail",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },
   "active": false,
-  "settings": { "executionOrder": "v1" }
+  "settings": {
+    "executionOrder": "v1"
+  }
 }

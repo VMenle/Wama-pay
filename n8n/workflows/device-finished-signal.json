@@ -12,20 +12,30 @@
       "name": "Webhook: Device Finished",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [-1000, 0],
+      "position": [
+        -1000,
+        0
+      ],
       "webhookId": "wama-pay-device-finished",
       "notes": "Statischer, fest konfigurierter Endpunkt -- wird direkt vom Shelly-Skript (shelly/wama-pay-finish-signal.js) aufgerufen. Erwartet Body { device_id } und Header X-Wama-Pay-Signal-Key."
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
           "conditions": [
             {
               "id": "valid-secret",
               "leftValue": "={{$json.headers['x-wama-pay-signal-key']}}",
               "rightValue": "9847cbcf7306a429707b76470879c6f9e771e83be69430535f30da6ff7702353",
-              "operator": { "type": "string", "operation": "equals" }
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
             }
           ],
           "combinator": "and"
@@ -36,7 +46,10 @@
       "name": "Signal-Key gültig?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [-760, 0]
+      "position": [
+        -760,
+        0
+      ]
     },
     {
       "parameters": {
@@ -45,38 +58,52 @@
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
-            { "name": "device_id", "value": "=eq.{{$json.body.device_id}}" },
-            { "name": "select", "value": "resume_url" }
+            {
+              "name": "device_id",
+              "value": "=eq.{{$json.body.device_id}}"
+            },
+            {
+              "name": "select",
+              "value": "resume_url"
+            }
           ]
         },
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            { "name": "apikey", "value": "={{$credentials.supabaseServiceRole.apiKey}}" },
-            { "name": "Authorization", "value": "=Bearer {{$credentials.supabaseServiceRole.apiKey}}" }
-          ]
-        },
-        "options": {}
+        "options": {},
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
       },
       "id": "http-load-signal",
       "name": "Resume-URL für Gerät nachschlagen",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [-520, -100],
+      "position": [
+        -520,
+        -100
+      ],
       "credentials": {
-        "httpHeaderAuth": { "id": "supabase-service-role", "name": "Supabase Service Role" }
+        "httpHeaderAuth": {
+          "id": "supabase-service-role",
+          "name": "Supabase Service Role"
+        }
       }
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
           "conditions": [
             {
               "id": "has-resume-url",
               "leftValue": "={{$json[0]?.resume_url}}",
               "rightValue": "",
-              "operator": { "type": "string", "operation": "notEmpty" }
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
             }
           ],
           "combinator": "and"
@@ -87,7 +114,10 @@
       "name": "Wartende Ausführung gefunden?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [-280, -100]
+      "position": [
+        -280,
+        -100
+      ]
     },
     {
       "parameters": {
@@ -99,7 +129,10 @@
       "name": "Wartende Ausführung fortsetzen",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [-40, -160],
+      "position": [
+        -40,
+        -160
+      ],
       "notes": "Ruft die zuvor unter device_finish_signals.resume_url gespeicherte n8n-Wait-Resume-URL auf -- setzt den Workflow 'order-released-notify-fertig' vorzeitig fort (statt auf den 2h-Timeout zu warten)."
     },
     {
@@ -108,7 +141,10 @@
       "name": "Kein aktiver Waschgang für dieses Gerät (ignorieren)",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [-40, -20]
+      "position": [
+        -40,
+        -20
+      ]
     },
     {
       "parameters": {},
@@ -116,25 +152,74 @@
       "name": "Ungültiger Signal-Key (verwerfen)",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [-520, 120]
+      "position": [
+        -520,
+        120
+      ]
     }
   ],
   "connections": {
-    "Webhook: Device Finished": { "main": [[{ "node": "Signal-Key gültig?", "type": "main", "index": 0 }]] },
-    "Signal-Key gültig?": {
+    "Webhook: Device Finished": {
       "main": [
-        [{ "node": "Resume-URL für Gerät nachschlagen", "type": "main", "index": 0 }],
-        [{ "node": "Ungültiger Signal-Key (verwerfen)", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Signal-Key gültig?",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Resume-URL für Gerät nachschlagen": { "main": [[{ "node": "Wartende Ausführung gefunden?", "type": "main", "index": 0 }]] },
+    "Signal-Key gültig?": {
+      "main": [
+        [
+          {
+            "node": "Resume-URL für Gerät nachschlagen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ungültiger Signal-Key (verwerfen)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resume-URL für Gerät nachschlagen": {
+      "main": [
+        [
+          {
+            "node": "Wartende Ausführung gefunden?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Wartende Ausführung gefunden?": {
       "main": [
-        [{ "node": "Wartende Ausführung fortsetzen", "type": "main", "index": 0 }],
-        [{ "node": "Kein aktiver Waschgang für dieses Gerät (ignorieren)", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Wartende Ausführung fortsetzen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Kein aktiver Waschgang für dieses Gerät (ignorieren)",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },
   "active": false,
-  "settings": { "executionOrder": "v1" }
+  "settings": {
+    "executionOrder": "v1"
+  }
 }

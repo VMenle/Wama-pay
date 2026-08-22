@@ -4,14 +4,22 @@
     {
       "parameters": {
         "rule": {
-          "interval": [{ "field": "minutes", "minutesInterval": 5 }]
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
         }
       },
       "id": "schedule-trigger",
       "name": "Alle 5 Minuten",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [-600, 0]
+      "position": [
+        -600,
+        0
+      ]
     },
     {
       "parameters": {
@@ -23,20 +31,29 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "apikey", "value": "={{$credentials.supabaseServiceRole.apiKey}}" },
-            { "name": "Authorization", "value": "=Bearer {{$credentials.supabaseServiceRole.apiKey}}" },
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
-        "options": {}
+        "options": {},
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
       },
       "id": "http-expire-reservations",
       "name": "expire_stale_reservations() aufrufen",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [-360, 0],
+      "position": [
+        -360,
+        0
+      ],
       "credentials": {
-        "httpHeaderAuth": { "id": "supabase-service-role", "name": "Supabase Service Role" }
+        "httpHeaderAuth": {
+          "id": "supabase-service-role",
+          "name": "Supabase Service Role"
+        }
       }
     },
     {
@@ -47,13 +64,38 @@
       "name": "Ergebnis zusammenfassen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-120, 0]
+      "position": [
+        -120,
+        0
+      ]
     }
   ],
   "connections": {
-    "Alle 5 Minuten": { "main": [[{ "node": "expire_stale_reservations() aufrufen", "type": "main", "index": 0 }]] },
-    "expire_stale_reservations() aufrufen": { "main": [[{ "node": "Ergebnis zusammenfassen", "type": "main", "index": 0 }]] }
+    "Alle 5 Minuten": {
+      "main": [
+        [
+          {
+            "node": "expire_stale_reservations() aufrufen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "expire_stale_reservations() aufrufen": {
+      "main": [
+        [
+          {
+            "node": "Ergebnis zusammenfassen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
   "active": false,
-  "settings": { "executionOrder": "v1" }
+  "settings": {
+    "executionOrder": "v1"
+  }
 }

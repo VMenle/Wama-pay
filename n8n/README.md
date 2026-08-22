@@ -43,14 +43,23 @@ Umgebungsvariablen nötig) -- Setup läuft also komplett über die n8n-
 Weboberfläche, kein Server-/Terminal-Zugriff nötig:
 
 1. **Supabase-Zugangsdaten als n8n-Credential anlegen**: In n8n unter
-   *Credentials* einen generischen "Header Auth"-Credential mit Namen
-   **`Supabase Service Role`** anlegen:
-   - Header-Name: `apikey` → Wert: der Supabase **Service-Role-Key** (niemals
-     der anon-Key, da die RPCs/REST-Calls hier absichtlich RLS umgehen müssen;
-     zu finden im Supabase-Dashboard unter Project Settings → API)
-   - Zusätzlich einen zweiten Header `Authorization: Bearer <service-role-key>`
-     (falls das genutzte HTTP-Request-Node nur einen Header-Auth-Slot erlaubt,
-     stattdessen zwei "Header Auth"-Credentials verwenden).
+   *Credentials* → *Add Credential* → **"Header Auth"** einen Credential mit
+   Namen **`Supabase Service Role`** anlegen, mit genau diesen zwei Feldern:
+   - **Name**: `apikey`
+   - **Value**: der Supabase **Service-Role-Key** (niemals der anon-Key, da
+     die RPCs/REST-Calls hier absichtlich RLS umgehen müssen -- zu finden im
+     Supabase-Dashboard unter **Project Settings → API Keys**, Zeile
+     `service_role` mit dem roten "secret"-Badge)
+
+   Ein einzelner `apikey`-Header genügt -- Supabase leitet daraus
+   automatisch die passende Berechtigung ab, ein zusätzlicher
+   `Authorization`-Header ist nicht nötig. Die HTTP-Request-Nodes in den vier
+   JSON-Dateien sind bereits so vorkonfiguriert, dass sie diesen Credential
+   automatisch verwenden (Feld "Authentication" → "Predefined Credential
+   Type" ist absichtlich NICHT gesetzt, sondern der generische "Header Auth"
+   -- beim Import muss lediglich der oben angelegte Credential in jedem
+   HTTP-Request-Node ausgewählt werden, falls n8n ihn nicht automatisch
+   zuordnet).
 2. **SMTP-Credential** mit Namen **`Wama-Pay SMTP`** anlegen (Absenderadresse
    z. B. `info@energy-leisure.de`) — wird von den "Send Email"-Nodes genutzt.
 3. Alle vier JSON-Dateien in n8n importieren (*Import from File*), die

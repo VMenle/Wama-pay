@@ -12,7 +12,10 @@
       "name": "Webhook: Order Released",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [-1400, 0],
+      "position": [
+        -1400,
+        0
+      ],
       "webhookId": "wama-pay-order-released"
     },
     {
@@ -22,26 +25,33 @@
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
-            { "name": "id", "value": "=eq.{{$json.body.order_id}}" },
-            { "name": "select", "value": "id,device_id,customer_id,released_at,devices(label),products(name),customers(email,full_name,customer_notification_settings(notify_on_release,channel))" }
+            {
+              "name": "id",
+              "value": "=eq.{{$json.body.order_id}}"
+            },
+            {
+              "name": "select",
+              "value": "id,device_id,customer_id,released_at,devices(label),products(name),customers(email,full_name,customer_notification_settings(notify_on_release,channel))"
+            }
           ]
         },
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            { "name": "apikey", "value": "={{$credentials.supabaseServiceRole.apiKey}}" },
-            { "name": "Authorization", "value": "=Bearer {{$credentials.supabaseServiceRole.apiKey}}" }
-          ]
-        },
-        "options": {}
+        "options": {},
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
       },
       "id": "http-load-order",
       "name": "Order + Kunde + Einstellung laden",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [-1160, 0],
+      "position": [
+        -1160,
+        0
+      ],
       "credentials": {
-        "httpHeaderAuth": { "id": "supabase-service-role", "name": "Supabase Service Role" }
+        "httpHeaderAuth": {
+          "id": "supabase-service-role",
+          "name": "Supabase Service Role"
+        }
       }
     },
     {
@@ -52,7 +62,10 @@
       "name": "Order-Datensatz entpacken",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-920, 0]
+      "position": [
+        -920,
+        0
+      ]
     },
     {
       "parameters": {
@@ -61,26 +74,38 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "apikey", "value": "={{$credentials.supabaseServiceRole.apiKey}}" },
-            { "name": "Authorization", "value": "=Bearer {{$credentials.supabaseServiceRole.apiKey}}" },
-            { "name": "Content-Type", "value": "application/json" },
-            { "name": "Prefer", "value": "resolution=merge-duplicates" }
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates"
+            }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ device_id: $json.device_id, order_id: $json.id, resume_url: $execution.resumeUrl }) }}",
-        "options": {}
+        "options": {},
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
       },
       "id": "http-store-resume-url",
       "name": "Resume-URL für dieses Gerät hinterlegen",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [-680, 0],
+      "position": [
+        -680,
+        0
+      ],
       "notesInFlow": true,
       "notes": "$execution.resumeUrl ist bereits hier bekannt (vor Ausführung des Wait-Nodes), da beides an dieselbe Execution/den Wait-Node gebunden ist.",
       "credentials": {
-        "httpHeaderAuth": { "id": "supabase-service-role", "name": "Supabase Service Role" }
+        "httpHeaderAuth": {
+          "id": "supabase-service-role",
+          "name": "Supabase Service Role"
+        }
       }
     },
     {
@@ -98,7 +123,10 @@
       "name": "Warten: Fertig-Signal ODER 2h-Timeout",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
-      "position": [-440, 0],
+      "position": [
+        -440,
+        0
+      ],
       "notes": "Wird entweder durch den POST auf die gespeicherte Resume-URL (ausgelöst vom Workflow 'device-finished-signal') vorzeitig fortgesetzt, oder spätestens nach 2h automatisch."
     },
     {
@@ -108,29 +136,41 @@
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
-            { "name": "id", "value": "=eq.{{$('Order-Datensatz entpacken').first().json.device_id}}" }
+            {
+              "name": "id",
+              "value": "=eq.{{$('Order-Datensatz entpacken').first().json.device_id}}"
+            }
           ]
         },
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "apikey", "value": "={{$credentials.supabaseServiceRole.apiKey}}" },
-            { "name": "Authorization", "value": "=Bearer {{$credentials.supabaseServiceRole.apiKey}}" },
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={\"status\": \"free\", \"current_order_id\": null}",
-        "options": {}
+        "options": {},
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
       },
       "id": "http-free-device",
       "name": "Gerät wieder freigeben",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [-200, 0],
+      "position": [
+        -200,
+        0
+      ],
       "credentials": {
-        "httpHeaderAuth": { "id": "supabase-service-role", "name": "Supabase Service Role" }
+        "httpHeaderAuth": {
+          "id": "supabase-service-role",
+          "name": "Supabase Service Role"
+        }
       }
     },
     {
@@ -140,43 +180,58 @@
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
-            { "name": "device_id", "value": "=eq.{{$('Order-Datensatz entpacken').first().json.device_id}}" }
+            {
+              "name": "device_id",
+              "value": "=eq.{{$('Order-Datensatz entpacken').first().json.device_id}}"
+            }
           ]
         },
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            { "name": "apikey", "value": "={{$credentials.supabaseServiceRole.apiKey}}" },
-            { "name": "Authorization", "value": "=Bearer {{$credentials.supabaseServiceRole.apiKey}}" }
-          ]
-        },
-        "options": {}
+        "options": {},
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
       },
       "id": "http-cleanup-signal",
       "name": "Signal-Eintrag aufräumen",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [40, 0],
+      "position": [
+        40,
+        0
+      ],
       "credentials": {
-        "httpHeaderAuth": { "id": "supabase-service-role", "name": "Supabase Service Role" }
+        "httpHeaderAuth": {
+          "id": "supabase-service-role",
+          "name": "Supabase Service Role"
+        }
       }
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
           "conditions": [
             {
               "id": "has-customer",
               "leftValue": "={{$('Order-Datensatz entpacken').first().json.customer_id}}",
               "rightValue": "",
-              "operator": { "type": "string", "operation": "notEmpty" }
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
             },
             {
               "id": "notify-enabled",
               "leftValue": "={{$('Order-Datensatz entpacken').first().json.customers?.customer_notification_settings?.notify_on_release}}",
               "rightValue": true,
-              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
             }
           ],
           "combinator": "and"
@@ -187,7 +242,10 @@
       "name": "Eingeloggt + Benachrichtigung gewünscht?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [280, 0]
+      "position": [
+        280,
+        0
+      ]
     },
     {
       "parameters": {
@@ -202,9 +260,15 @@
       "name": "\"Maschine fertig\"-Mail senden",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
-      "position": [520, -100],
+      "position": [
+        520,
+        -100
+      ],
       "credentials": {
-        "smtp": { "id": "wama-pay-smtp", "name": "Wama-Pay SMTP" }
+        "smtp": {
+          "id": "wama-pay-smtp",
+          "name": "Wama-Pay SMTP"
+        }
       }
     },
     {
@@ -213,24 +277,111 @@
       "name": "Keine Benachrichtigung (anonym oder deaktiviert)",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [520, 120]
+      "position": [
+        520,
+        120
+      ]
     }
   ],
   "connections": {
-    "Webhook: Order Released": { "main": [[{ "node": "Order + Kunde + Einstellung laden", "type": "main", "index": 0 }]] },
-    "Order + Kunde + Einstellung laden": { "main": [[{ "node": "Order-Datensatz entpacken", "type": "main", "index": 0 }]] },
-    "Order-Datensatz entpacken": { "main": [[{ "node": "Resume-URL für dieses Gerät hinterlegen", "type": "main", "index": 0 }]] },
-    "Resume-URL für dieses Gerät hinterlegen": { "main": [[{ "node": "Warten: Fertig-Signal ODER 2h-Timeout", "type": "main", "index": 0 }]] },
-    "Warten: Fertig-Signal ODER 2h-Timeout": { "main": [[{ "node": "Gerät wieder freigeben", "type": "main", "index": 0 }]] },
-    "Gerät wieder freigeben": { "main": [[{ "node": "Signal-Eintrag aufräumen", "type": "main", "index": 0 }]] },
-    "Signal-Eintrag aufräumen": { "main": [[{ "node": "Eingeloggt + Benachrichtigung gewünscht?", "type": "main", "index": 0 }]] },
+    "Webhook: Order Released": {
+      "main": [
+        [
+          {
+            "node": "Order + Kunde + Einstellung laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Order + Kunde + Einstellung laden": {
+      "main": [
+        [
+          {
+            "node": "Order-Datensatz entpacken",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Order-Datensatz entpacken": {
+      "main": [
+        [
+          {
+            "node": "Resume-URL für dieses Gerät hinterlegen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resume-URL für dieses Gerät hinterlegen": {
+      "main": [
+        [
+          {
+            "node": "Warten: Fertig-Signal ODER 2h-Timeout",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Warten: Fertig-Signal ODER 2h-Timeout": {
+      "main": [
+        [
+          {
+            "node": "Gerät wieder freigeben",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gerät wieder freigeben": {
+      "main": [
+        [
+          {
+            "node": "Signal-Eintrag aufräumen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Signal-Eintrag aufräumen": {
+      "main": [
+        [
+          {
+            "node": "Eingeloggt + Benachrichtigung gewünscht?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Eingeloggt + Benachrichtigung gewünscht?": {
       "main": [
-        [{ "node": "\"Maschine fertig\"-Mail senden", "type": "main", "index": 0 }],
-        [{ "node": "Keine Benachrichtigung (anonym oder deaktiviert)", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "\"Maschine fertig\"-Mail senden",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Keine Benachrichtigung (anonym oder deaktiviert)",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },
   "active": false,
-  "settings": { "executionOrder": "v1" }
+  "settings": {
+    "executionOrder": "v1"
+  }
 }

@@ -384,11 +384,26 @@
         var { error } = await client.from("products").update({ is_active: activeCb.checked }).eq("id", p.id);
         if (error) alert("Fehler: " + error.message);
       });
+
+      var priceInput = el("input", {
+        type: "number", step: "0.01", min: "0.01", style: "width:90px;",
+        value: (p.price_cents / 100).toFixed(2),
+      });
+      var priceSaveBtn = el("button", { type: "button", class: "btn-ghost btn-xs", text: "Speichern" });
+      priceSaveBtn.addEventListener("click", async function () {
+        var priceEuro = parseFloat(priceInput.value);
+        if (!priceEuro || priceEuro <= 0) { alert("Bitte einen gültigen Preis eingeben."); return; }
+        var { error } = await client.from("products").update({ price_cents: Math.round(priceEuro * 100) }).eq("id", p.id);
+        if (error) { alert("Fehler: " + error.message); return; }
+        await reloadAll();
+      });
+      var priceTd = el("td", { style: "display:flex; align-items:center; gap:6px;" }, [priceInput, priceSaveBtn]);
+
       tbody.appendChild(el("tr", {}, [
         el("td", { text: DEVICE_TYPE_LABELS[p.device_type] || p.device_type }),
         el("td", { text: p.location_id ? locationName(p.location_id) : "alle Standorte" }),
         el("td", { text: p.name }),
-        el("td", { text: formatPrice(p.price_cents, p.currency) }),
+        priceTd,
         el("td", {}, [activeCb]),
       ]));
     });

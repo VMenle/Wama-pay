@@ -1,23 +1,34 @@
 {
-  "name": "Wama-Pay – Reservation-Timeout-Wächter (Backup)",
+  "name": "Wama-Pay – Reservierung sofort ablaufen lassen",
   "nodes": [
     {
       "parameters": {
-        "rule": {
-          "interval": [
-            {
-              "field": "hours",
-              "hoursInterval": 1
-            }
-          ]
-        }
+        "httpMethod": "POST",
+        "path": "wama-pay/reservation-created",
+        "responseMode": "onReceived",
+        "options": {}
       },
-      "id": "schedule-trigger",
-      "name": "Stündlich",
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
+      "id": "webhook-reservation-created",
+      "name": "Webhook: Reservation Created",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
       "position": [
         -600,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 15,
+        "unit": "minutes"
+      },
+      "id": "wait-until-expiry",
+      "name": "Warten bis Reservierungsende (15 Min)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -360,
         0
       ]
     },
@@ -46,7 +57,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        -360,
+        -120,
         0
       ],
       "credentials": {
@@ -55,38 +66,25 @@
           "name": "Supabase Service Role"
         }
       }
-    },
-    {
-      "parameters": {
-        "jsCode": "const expired = $input.first().json || [];\nreturn [{ json: { expired_count: Array.isArray(expired) ? expired.length : 0, expired } }];"
-      },
-      "id": "code-summarize",
-      "name": "Ergebnis zusammenfassen",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        -120,
-        0
-      ]
     }
   ],
   "connections": {
-    "Stündlich": {
+    "Webhook: Reservation Created": {
       "main": [
         [
           {
-            "node": "expire_stale_reservations() aufrufen",
+            "node": "Warten bis Reservierungsende (15 Min)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "expire_stale_reservations() aufrufen": {
+    "Warten bis Reservierungsende (15 Min)": {
       "main": [
         [
           {
-            "node": "Ergebnis zusammenfassen",
+            "node": "expire_stale_reservations() aufrufen",
             "type": "main",
             "index": 0
           }

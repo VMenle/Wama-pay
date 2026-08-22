@@ -14,7 +14,7 @@
 import { handleCorsPreflight, jsonResponse } from "../_shared/cors.ts";
 import { createSupabaseAdminClient } from "../_shared/supabaseAdmin.ts";
 import { PROVIDER_ADAPTERS } from "../_shared/paymentProviderAdapter.ts";
-import { markOrderFailed, markOrderPaid, releaseOrder } from "../_shared/orderLifecycle.ts";
+import { markOrderFailed, markOrderPaid, releaseOrder, triggerN8n } from "../_shared/orderLifecycle.ts";
 
 // Wie lange eine Reservierung ohne Zahlungsbestätigung gültig bleibt, bevor
 // der n8n-Cron-Workflow "reservation-timeout-guard" sie aufräumt (siehe
@@ -187,6 +187,18 @@ Deno.serve(async (req: Request) => {
       .from("orders")
       .update({ status: "payment_pending", provider_ref: checkout.providerRef })
       .eq("id", order.id);
+
+    // Löst sofort (statt per Dauer-Abfrage) den n8n-Timeout-Wächter für
+    // GENAU diese Reservierung aus -- n8n wartet bis reservationExpiresAt
+    // und räumt dann auf, falls die Zahlung bis dahin nicht bestätigt
+    // wurde (siehe n8n/workflows/reservation-timeout-immediate.json). Der
+    // separate Zeitplan-Workflow (reservation-timeout-guard.json) bleibt
+    // zusätzlich als Sicherheitsnetz bestehen, falls dieser einzelne
+    // Trigger-Aufruf selbst fehlschlägt.
+    await triggerN8n("wama-pay/reservation-created", {
+      order_id: order.id,
+      reservation_expires_at: reservationExpiresAt,
+    });
 
     return jsonResponse({
       order_id: order.id,

@@ -16,3 +16,8 @@ verify_jwt = false
 # bleibt hier aktiv.
 [functions.create-checkout]
 verify_jwt = true
+
+# kontist-oauth-exchange wird einmalig direkt im Browser aufgerufen (kein
+# JWT im Request), siehe Datei-Kommentar in der Function selbst.
+[functions.kontist-oauth-exchange]
+verify_jwt = false

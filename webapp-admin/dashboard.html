@@ -18,6 +18,14 @@
   .id-copy{font-family:monospace; font-size:11.5px; background:#eceef1; padding:2px 6px; border-radius:5px; cursor:pointer;}
   .btn-xs{padding:5px 10px; font-size:12.5px; border-radius:7px;}
   .row-actions{display:flex; gap:6px; flex-wrap:wrap;}
+  /* Tabellen sind auf schmalen Bildschirmen breiter als der Viewport --
+     eigener Scroll-Container statt Layout-Bruch/Umbruch der Spalten. */
+  .table-scroll{padding:0; overflow-x:auto; -webkit-overflow-scrolling:touch;}
+  .table-scroll .admin-table{min-width:640px;}
+  @media (max-width:600px){
+    .admin-section h2{font-size:16px;}
+    .inline-form{padding:12px; grid-template-columns:1fr;}
+  }
 </style>
 </head>
 <body>
@@ -133,7 +141,7 @@
       ]));
     });
     table.appendChild(tbody);
-    section.appendChild(el("div", { class: "card" }, [table]));
+    section.appendChild(el("div", { class: "card table-scroll" }, [table]));
 
     var form = el("form", { class: "inline-form" });
     form.innerHTML =
@@ -260,7 +268,7 @@
       tbody.appendChild(tr);
     });
     table.appendChild(tbody);
-    section.appendChild(el("div", { class: "card" }, [table]));
+    section.appendChild(el("div", { class: "card table-scroll" }, [table]));
 
     var form = el("form", { class: "inline-form" });
     var locOptions = locations.map(function (l) { return '<option value="' + l.id + '">' + l.name + "</option>"; }).join("");
@@ -408,7 +416,7 @@
       ]));
     });
     table.appendChild(tbody);
-    section.appendChild(el("div", { class: "card" }, [table]));
+    section.appendChild(el("div", { class: "card table-scroll" }, [table]));
 
     var form = el("form", { class: "inline-form" });
     var typeOptions = Object.keys(DEVICE_TYPE_LABELS).map(function (t) { return '<option value="' + t + '">' + DEVICE_TYPE_LABELS[t] + "</option>"; }).join("");
@@ -506,7 +514,7 @@
       ]));
     });
     table.appendChild(tbody);
-    section.appendChild(el("div", { class: "card" }, [table]));
+    section.appendChild(el("div", { class: "card table-scroll" }, [table]));
 
     return section;
   }

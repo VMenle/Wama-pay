@@ -61,7 +61,9 @@
   var DEVICE_TYPE_LABELS = { washer: "Waschmaschine", dryer: "Trockner", trailer: "Anhänger", card_dispenser: "Kartenspender" };
   var STATUS_LABELS = { free: "Frei", busy: "Belegt", offline: "Offline", maintenance: "Wartung" };
 
-  var client, projectId, locations = [], devices = [], products = [], overrideOrders = [];
+  var ORDER_STATUS_LABELS = { reserved: "Reserviert", payment_pending: "Wartet auf Zahlung", paid: "Bezahlt", released: "Freigeschaltet", failed: "Fehlgeschlagen", expired: "Abgelaufen", refunded: "Erstattet" };
+
+  var client, projectId, locations = [], devices = [], products = [], overrideOrders = [], recentOrders = [];
   var deviceLocationFilter = "";
 
   function el(tag, attrs, children) {
@@ -104,6 +106,17 @@
     devices = devRes.data || [];
     products = prodRes.data || [];
     overrideOrders = overrideRes.data || [];
+
+    var ordersRes = await client
+      .from("orders")
+      .select("id, created_at, status, amount_cents, currency, payment_method, provider_ref, device_id, devices!orders_device_id_fkey(label, location_id)")
+      .eq("project_id", projectId)
+      .eq("payment_method", "provider")
+      .order("created_at", { ascending: false })
+      .limit(30);
+    if (ordersRes.error) console.error("orders:", ordersRes.error);
+    recentOrders = ordersRes.data || [];
+
     render();
   }
 
@@ -114,7 +127,84 @@
     root.appendChild(renderDevicesSection());
     root.appendChild(renderProductsSection());
     root.appendChild(renderSecuritySection());
+    root.appendChild(renderOrdersSection());
     root.appendChild(renderOverrideLogSection());
+  }
+
+  // ---------- Zahlungen (Provider-Checkouts) ----------
+  function renderOrdersSection() {
+    var section = el("section", { class: "admin-section" });
+    section.appendChild(el("h2", { text: "Zahlungen" }));
+    section.appendChild(el("p", { class: "hint", text: "Letzte 30 Kartenzahlungen (SumUp). Bei einer hängenden Zahlung (z.B. Webhook nicht angekommen) kann hier manuell nachgeprüft werden, ohne auf den nächsten automatischen Check zu warten." }));
+
+    if (recentOrders.length === 0) {
+      section.appendChild(el("p", { style: "color:var(--ink-soft);", text: "Noch keine Kartenzahlungen." }));
+      return section;
+    }
+
+    var table = el("table", { class: "admin-table" });
+    table.innerHTML = "<thead><tr><th>Zeitpunkt</th><th>Gerät</th><th>Betrag</th><th>Status</th><th>Aktion</th></tr></thead>";
+    var tbody = el("tbody");
+    recentOrders.forEach(function (o) {
+      var devLabel = o.devices ? o.devices.label : "—";
+      var statusCell = el("td", { text: ORDER_STATUS_LABELS[o.status] || o.status });
+      var actionCell = el("td");
+      if (o.status === "reserved" || o.status === "payment_pending") {
+        var btn = el("button", { type: "button", class: "btn-primary btn-xs", text: "Zahlung erneut prüfen" });
+        btn.addEventListener("click", function () { recheckOrder(o.id, btn, statusCell); });
+        actionCell.appendChild(btn);
+      } else {
+        actionCell.appendChild(el("span", { style: "color:var(--ink-soft); font-size:12.5px;", text: "—" }));
+      }
+      tbody.appendChild(el("tr", {}, [
+        el("td", { text: new Date(o.created_at).toLocaleString("de-DE") }),
+        el("td", { text: devLabel }),
+        el("td", { text: formatPrice(o.amount_cents, o.currency) }),
+        statusCell,
+        actionCell,
+      ]));
+    });
+    table.appendChild(tbody);
+    section.appendChild(el("div", { class: "card table-scroll" }, [table]));
+
+    return section;
+  }
+
+  // Fragt aktiv beim Zahlungsanbieter nach, statt auf den nächsten
+  // automatischen pg_cron-Check zu warten (siehe reconcile-provider-order).
+  // is_final bewusst false -- ein manueller Klick darf eine noch laufende
+  // Reservierung nie abbrechen, nur eine bereits erfolgreiche Zahlung
+  // vorzeitig bestätigen.
+  async function recheckOrder(orderId, btn, statusCell) {
+    btn.disabled = true;
+    var originalText = btn.textContent;
+    btn.textContent = "Prüfe…";
+    try {
+      var res = await fetch(window.WAMA_PAY_CONFIG.supabaseUrl + "/functions/v1/reconcile-provider-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ order_id: orderId, is_final: false }),
+      });
+      var data = await res.json();
+      if (!res.ok) {
+        alert("Prüfung fehlgeschlagen: " + (data.error || res.status));
+        btn.disabled = false;
+        btn.textContent = originalText;
+        return;
+      }
+      if (data.outcome === "still_pending") {
+        alert("SumUp meldet weiterhin keine abgeschlossene Zahlung. Die Reservierung bleibt bestehen (läuft noch bis zum 15-Minuten-Timeout).");
+        btn.disabled = false;
+        btn.textContent = originalText;
+        return;
+      }
+      // "released", "failed" oder "already_processed" -- Liste neu laden, zeigt den aktuellen Stand.
+      await reloadAll();
+    } catch (err) {
+      alert("Prüfung fehlgeschlagen: " + err.message);
+      btn.disabled = false;
+      btn.textContent = originalText;
+    }
   }
 
   function overrideUrlFor(dev) {

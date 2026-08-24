@@ -175,7 +175,7 @@ Deno.serve(async (req: Request) => {
     }
 
     await markOrderPaid(supabase, order);
-    await releaseOrder(supabase, order);
+    await releaseOrder(supabase, order, "wallet_payment");
 
     return jsonResponse({ order_id: order.id, status: "released" });
   }

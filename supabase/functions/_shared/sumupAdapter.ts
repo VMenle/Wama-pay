@@ -87,11 +87,24 @@ async function sumupRequest(path: string, init: RequestInit): Promise<Record<str
 // der aktiven Nachfrage (reconcile-provider-order) -- und blieb dauerhaft
 // als "pending" stehen. Das war die eigentliche Ursache des Vorfalls vom
 // 24.08.2026 (echte Zahlung erfolgreich, Order nie freigeschaltet).
+//
+// FAILED und EXPIRED sind NICHT gleichbedeutend: FAILED heißt laut SumUp nur
+// "der letzte Zahlungsversuch ist fehlgeschlagen" -- der Checkout bleibt
+// dabei bestehen, der Kunde kann auf demselben Checkout sofort eine andere
+// Karte probieren. EXPIRED heißt dagegen wirklich endgültig, der Checkout
+// kann nicht mehr verwendet werden. Würden wir FAILED wie EXPIRED als
+// endgültig "failed" behandeln, würde confirmProviderOrder die Reservierung
+// SOFORT abbrechen (auch bei einem frühen, nicht-finalen Check) -- schon
+// nach einer einzigen abgelehnten Karte, während der Kunde vielleicht direkt
+// eine zweite probiert. Das widerspräche der ausdrücklichen Vorgabe, dass
+// die Reservierung die vollen 15 Minuten bestehen bleibt und nur der finale
+// Check am Ende tatsächlich abbrechen darf. FAILED wird deshalb bewusst wie
+// PENDING behandelt -- nur EXPIRED gilt als endgültig gescheitert.
 function mapSumupStatus(sumupStatus: unknown): "paid" | "failed" | "pending" {
   const status = String(sumupStatus ?? "").toUpperCase();
   if (status === "PAID") return "paid";
-  if (status === "FAILED" || status === "EXPIRED") return "failed";
-  return "pending"; // PENDING
+  if (status === "EXPIRED") return "failed";
+  return "pending"; // PENDING oder FAILED (letzter Versuch fehlgeschlagen, Checkout bleibt nutzbar)
 }
 
 async function hmacSha256Hex(secret: string, message: string): Promise<string> {

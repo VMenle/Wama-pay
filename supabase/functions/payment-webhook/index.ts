@@ -98,7 +98,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const outcome = await confirmProviderOrder(supabase, order, { status: payload.status });
+    const outcome = await confirmProviderOrder(supabase, order, { status: payload.status }, "payment_webhook");
     console.log(`payment-webhook: Order '${order.id}' -> ${outcome} (Provider-Status: ${payload.status}).`);
     return jsonResponse({ ok: true, outcome });
   } catch (err) {

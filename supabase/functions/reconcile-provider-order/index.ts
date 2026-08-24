@@ -84,7 +84,7 @@ Deno.serve(async (req: Request) => {
         return jsonResponse({ error: "order_not_found" }, 404);
       }
 
-      const outcome = await confirmProviderOrder(supabase, freshOrder, { status: payload.status });
+      const outcome = await confirmProviderOrder(supabase, freshOrder, { status: payload.status }, "active_reconciliation");
       console.log(`reconcile-provider-order: Order '${order.id}' (is_final=${isFinal}) -> ${outcome} (Provider meldet: ${payload.status}).`);
       if (outcome !== "no_action") {
         return jsonResponse({ ok: true, outcome });

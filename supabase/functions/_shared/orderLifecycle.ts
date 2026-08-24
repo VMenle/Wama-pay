@@ -135,6 +135,13 @@ async function triggerDeviceActivation(
 export async function releaseOrder(
   supabase: SupabaseClient,
   order: { id: string; project_id: string; device_id: string },
+  // War zuvor hart auf "payment_webhook" gesetzt -- egal ob die Freigabe
+  // wirklich vom echten Webhook, von der aktiven Nachfrage
+  // (reconcile-provider-order), von PayPal-IPN oder von der Notfreigabe
+  // ausgelöst wurde. Gerade zur Diagnose von Vorfällen wie "kam der Webhook
+  // an oder nicht?" (siehe 24.08.2026) ist eine falsche Quellenangabe in den
+  // eigenen Log-Daten kontraproduktiv.
+  triggeredBy: string = "payment_webhook",
 ): Promise<void> {
   const { error: orderError } = await supabase
     .from("orders")
@@ -149,7 +156,7 @@ export async function releaseOrder(
   const { error: releaseEventError } = await supabase.from("release_events").insert({
     order_id: order.id,
     device_id: order.device_id,
-    triggered_by: "payment_webhook",
+    triggered_by: triggeredBy,
     success: activation.success,
     error_detail: activation.detail ?? null,
   });
@@ -213,6 +220,9 @@ export async function confirmProviderOrder(
   supabase: SupabaseClient,
   order: { id: string; project_id: string; device_id: string; status: string },
   payload: { status: "paid" | "failed" | "pending" },
+  // Woher dieser Aufruf kommt (echter Webhook vs. aktive Nachfrage) --
+  // landet unverändert in release_events.triggered_by.
+  triggeredBy: string = "payment_webhook",
 ): Promise<ConfirmProviderOrderOutcome> {
   // Idempotenz: bereits final verarbeitete Orders werden ignoriert, egal
   // wie oft/auf welchem Weg die Bestätigung erneut eintrifft.
@@ -224,7 +234,7 @@ export async function confirmProviderOrder(
     if (order.status === "reserved" || order.status === "payment_pending") {
       await markOrderPaid(supabase, order);
     }
-    await releaseOrder(supabase, { id: order.id, project_id: order.project_id, device_id: order.device_id });
+    await releaseOrder(supabase, { id: order.id, project_id: order.project_id, device_id: order.device_id }, triggeredBy);
     return "released";
   }
 
@@ -344,7 +354,7 @@ export async function createAndReleaseOrderForDevice(
     return "paid_device_busy";
   }
 
-  await releaseOrder(supabase, { id: order.id, project_id: order.project_id, device_id: order.device_id });
+  await releaseOrder(supabase, { id: order.id, project_id: order.project_id, device_id: order.device_id }, "paypal_ipn");
   return "released";
 }
 
@@ -434,6 +444,6 @@ export async function createAndReleaseOverrideOrder(
     return "device_busy";
   }
 
-  await releaseOrder(supabase, { id: order.id, project_id: order.project_id, device_id: order.device_id });
+  await releaseOrder(supabase, { id: order.id, project_id: order.project_id, device_id: order.device_id }, "admin_override");
   return "released";
 }

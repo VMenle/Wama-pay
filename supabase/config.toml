@@ -21,3 +21,8 @@ verify_jwt = true
 # JWT im Request), siehe Datei-Kommentar in der Function selbst.
 [functions.kontist-oauth-exchange]
 verify_jwt = false
+
+# reconcile-provider-order wird von pg_net/pg_cron aus der Datenbank heraus
+# aufgerufen (siehe Migration 0024), kein JWT im Request.
+[functions.reconcile-provider-order]
+verify_jwt = false

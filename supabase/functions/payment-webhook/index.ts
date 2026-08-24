@@ -22,7 +22,7 @@
 import { jsonResponse } from "../_shared/cors.ts";
 import { createSupabaseAdminClient } from "../_shared/supabaseAdmin.ts";
 import { PROVIDER_ADAPTERS } from "../_shared/paymentProviderAdapter.ts";
-import { createAndReleaseOrderForDevice, markOrderFailed, markOrderPaid, releaseOrder } from "../_shared/orderLifecycle.ts";
+import { confirmProviderOrder, createAndReleaseOrderForDevice } from "../_shared/orderLifecycle.ts";
 
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") {
@@ -97,29 +97,12 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: "order_not_found" }, 404);
   }
 
-  // Idempotenz: bereits final verarbeitete Orders werden ignoriert, egal
-  // wie oft der Provider den Webhook erneut zustellt.
-  if (order.status === "released" || order.status === "failed" || order.status === "refunded") {
-    return jsonResponse({ ok: true, status: order.status, note: "already_processed" });
-  }
-
   try {
-    if (payload.status === "paid") {
-      if (order.status === "reserved" || order.status === "payment_pending") {
-        await markOrderPaid(supabase, order);
-      }
-      // Erneutes Laden, falls markOrderPaid gerade erst übergeführt hat.
-      await releaseOrder(supabase, { id: order.id, project_id: order.project_id, device_id: order.device_id });
-    } else if (payload.status === "failed") {
-      if (order.status === "reserved" || order.status === "payment_pending") {
-        await markOrderFailed(supabase, order, "provider_reported_failed");
-      }
-    }
-    // status === 'pending': keine Aktion, auf nächsten Webhook warten.
+    const outcome = await confirmProviderOrder(supabase, order, { status: payload.status });
+    console.log(`payment-webhook: Order '${order.id}' -> ${outcome} (Provider-Status: ${payload.status}).`);
+    return jsonResponse({ ok: true, outcome });
   } catch (err) {
     console.error("payment-webhook: Verarbeitung fehlgeschlagen:", err);
     return jsonResponse({ error: "processing_failed" }, 500);
   }
-
-  return jsonResponse({ ok: true });
 });

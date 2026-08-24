@@ -189,6 +189,46 @@ export async function markOrderFailed(
   });
 }
 
+export type ConfirmProviderOrderOutcome = "released" | "failed" | "already_processed" | "no_action";
+
+/**
+ * Gemeinsame Bestätigungslogik für "confirm_existing_order"-Provider
+ * (aktuell SumUp): wird sowohl vom Webhook (payment-webhook/index.ts) als
+ * auch vom aktiven Nachfrage-Sicherheitsnetz
+ * (reconcile-provider-order/index.ts) genutzt, damit beide Wege exakt
+ * denselben, idempotenten Ablauf durchlaufen.
+ */
+export async function confirmProviderOrder(
+  supabase: SupabaseClient,
+  order: { id: string; project_id: string; device_id: string; status: string },
+  payload: { status: "paid" | "failed" | "pending" },
+): Promise<ConfirmProviderOrderOutcome> {
+  // Idempotenz: bereits final verarbeitete Orders werden ignoriert, egal
+  // wie oft/auf welchem Weg die Bestätigung erneut eintrifft.
+  if (order.status === "released" || order.status === "failed" || order.status === "refunded") {
+    return "already_processed";
+  }
+
+  if (payload.status === "paid") {
+    if (order.status === "reserved" || order.status === "payment_pending") {
+      await markOrderPaid(supabase, order);
+    }
+    await releaseOrder(supabase, { id: order.id, project_id: order.project_id, device_id: order.device_id });
+    return "released";
+  }
+
+  if (payload.status === "failed") {
+    if (order.status === "reserved" || order.status === "payment_pending") {
+      await markOrderFailed(supabase, order, "provider_reported_failed");
+      return "failed";
+    }
+    return "already_processed";
+  }
+
+  // status === 'pending': keine Aktion, auf nächste Bestätigung warten.
+  return "no_action";
+}
+
 export type CreateOrderForDeviceResult = "released" | "paid_device_busy" | "duplicate";
 
 /**

@@ -172,15 +172,26 @@ export const sumupAdapter: PaymentProviderAdapter = {
       throw new Error(`SumUp-Webhook ohne erkennbare Checkout-Id: ${rawBody}`);
     }
 
-    const checkout = await sumupRequest(`/v0.1/checkouts/${checkoutId}`, { method: "GET" });
+    return fetchCheckoutById(checkoutId);
+  },
 
-    return {
-      mode: "confirm_existing_order",
-      ref: String(checkout.checkout_reference ?? checkoutId),
-      status: mapSumupStatus(checkout.status),
-      amountCents: Math.round(Number(checkout.amount ?? 0) * 100),
-      currency: String(checkout.currency ?? "EUR"),
-      paidAt: new Date().toISOString(),
-    };
+  // providerRef == SumUp-Checkout-Id (siehe createCheckout: providerRef ist
+  // dort direkt checkoutId) -- derselbe direkte GET wie oben, nur ohne den
+  // Umweg über einen Webhook-Body.
+  async getStatusByRef(providerRef: string): Promise<UnifiedWebhookPayload> {
+    return fetchCheckoutById(providerRef);
   },
 };
+
+async function fetchCheckoutById(checkoutId: string): Promise<UnifiedWebhookPayload> {
+  const checkout = await sumupRequest(`/v0.1/checkouts/${checkoutId}`, { method: "GET" });
+
+  return {
+    mode: "confirm_existing_order",
+    ref: String(checkout.checkout_reference ?? checkoutId),
+    status: mapSumupStatus(checkout.status),
+    amountCents: Math.round(Number(checkout.amount ?? 0) * 100),
+    currency: String(checkout.currency ?? "EUR"),
+    paidAt: new Date().toISOString(),
+  };
+}

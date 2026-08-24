@@ -97,4 +97,12 @@ export const paypalAdapter: PaymentProviderAdapter = {
       providerTransactionId: txnId,
     };
   },
+
+  async getStatusByRef(): Promise<UnifiedWebhookPayload> {
+    throw new Error(
+      "paypalAdapter.getStatusByRef ist absichtlich nicht implementiert -- PayPal legt bei Wama-Pay nie eine " +
+      "vorab reservierte Order an (siehe createCheckout-Kommentar), es gibt also nichts, das aktiv nachgefragt " +
+      "werden müsste. Die Aufräum-Logik für den PayPal-Weg läuft ausschließlich über die IPN selbst."
+    );
+  },
 };

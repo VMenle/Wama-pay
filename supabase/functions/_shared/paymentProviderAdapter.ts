@@ -64,6 +64,17 @@ export interface PaymentProviderAdapter {
    * Zahlungsstatus, siehe sumupAdapter.ts).
    */
   resolveWebhookPayload(rawBody: string): Promise<UnifiedWebhookPayload>;
+
+  /**
+   * Fragt den aktuellen Zahlungsstatus AKTIV beim Provider ab, ohne dass
+   * vorher ein Webhook eingegangen sein muss -- Sicherheitsnetz, falls die
+   * Webhook-Zustellung ausbleibt (siehe reconcile-provider-order/index.ts,
+   * wird kurz nach Ablauf des Reservierungsfensters aufgerufen). Nur für
+   * "confirm_existing_order"-Provider relevant; ein reiner
+   * "create_order_for_device"-Provider (z.B. paypalAdapter) hat keinen
+   * vergleichbaren Einzelabruf und wirft hier bewusst einen Fehler.
+   */
+  getStatusByRef(providerRef: string): Promise<UnifiedWebhookPayload>;
 }
 
 // Dispatch-Tabelle: payment_providers.id -> Adapter-Instanz. Wird von

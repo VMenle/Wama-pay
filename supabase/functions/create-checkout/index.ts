@@ -192,11 +192,13 @@ Deno.serve(async (req: Request) => {
       .eq("id", order.id);
 
     // Plant einen einmaligen pg_cron-Job exakt zum Ablauf der Reservierung
-    // (Migration 0022) -- räumt die Order automatisch auf, falls die
-    // Zahlung bis dahin nicht bestätigt wurde. Fehlschlag hier blockiert
+    // (Migration 0024) -- fragt aktiv bei SumUp nach (Sicherheitsnetz,
+    // falls der Webhook nicht ankommt) und räumt erst danach auf, falls
+    // die Zahlung weiterhin nicht bestätigt ist. Fehlschlag hier blockiert
     // den Zahlungsablauf selbst nicht, wird nur geloggt.
     const { error: scheduleError } = await supabase.rpc("schedule_reservation_expiry_check", {
       p_run_at: reservationExpiresAt,
+      p_order_id: order.id,
     });
     if (scheduleError) {
       console.error(`Reservierungs-Timeout konnte nicht eingeplant werden (order ${order.id}):`, scheduleError.message);

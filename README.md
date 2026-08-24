@@ -43,10 +43,11 @@ hinzugefügt) in derselben Transaktion zu verwenden, in der er hinzugefügt
 wurde (0019 verwendet ihn in einem `CHECK`-Constraint). Läuft man beide als
 eine Ausführung, kommt der Fehler `unsafe use of new value of enum type`.
 
-Aktueller Stand (0001–0019): Kern-Tabellen, Zahlungsanbieter, Kunden/Wallet,
+Aktueller Stand (0001–0024): Kern-Tabellen, Zahlungsanbieter, Kunden/Wallet,
 verschlüsselte Bankdaten, RLS-Policies, Fertig-Signal-Infrastruktur, Seed-Daten,
 PayPal als Anbieter, Admin-Rolle + physische Freigabe-Platzhalter, Notfreigabe
-(Zwei-Faktor).
+(Zwei-Faktor), menschenlesbare Gerätecodes, Reservierungs-Timeout mit aktiver
+Nachfrage beim Zahlungsanbieter (pg_cron + pg_net) statt reinem Zeitablauf.
 
 ### 2. Ersten Admin-Account freischalten
 

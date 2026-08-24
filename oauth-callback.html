@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OAuth-Rückleitung – Wama-Pay</title>
+<link rel="stylesheet" href="assets/shared.css">
+</head>
+<body>
+
+<!--
+  Wama-Pay – generische OAuth2-Rückleitungsseite für einmalige, manuelle
+  Setup-Schritte (aktuell: Kontist-Kontozugriff für die
+  Echtzeitüberweisungs-Wallet-Aufladung). Zeigt nur den "code"-Query-
+  Parameter zum Kopieren an -- der eigentliche Tausch gegen Zugriffstoken
+  passiert serverseitig (siehe supabase/functions/kontist-oauth-exchange),
+  damit kein Client-Secret im Browser/Repo landet.
+-->
+
+<header class="app-header">
+  <div class="app-navbar">
+    <a href="webapp-checkout/index.html" class="app-brand"><span class="app-brand-mark"></span>Wama-Pay</a>
+  </div>
+</header>
+
+<main>
+  <div class="wrap-narrow">
+    <div class="page-head">
+      <span class="eyebrow">Setup</span>
+      <h1 style="font-size:22px;">Autorisierung erhalten</h1>
+      <p style="color:var(--ink-soft);">Dieser Code wird für einen einmaligen technischen Setup-Schritt benötigt.</p>
+    </div>
+
+    <div class="card" style="max-width:640px;">
+      <div id="content">Lade…</div>
+    </div>
+  </div>
+</main>
+
+<script>
+  var params = new URLSearchParams(window.location.search);
+  var code = params.get("code");
+  var error = params.get("error");
+  var contentEl = document.getElementById("content");
+
+  if (error) {
+    contentEl.innerHTML = '<div class="notice notice-warn">Fehler: ' + error + " (" + (params.get("error_description") || "") + ")</div>";
+  } else if (!code) {
+    contentEl.innerHTML = '<div class="notice notice-warn">Kein Code in der URL gefunden.</div>';
+  } else {
+    contentEl.innerHTML =
+      '<p style="margin-bottom:10px;">Code erhalten:</p>' +
+      '<p style="font-family:monospace; font-size:12px; word-break:break-all; background:var(--blue-light); padding:10px; border-radius:8px;">' + code + '</p>' +
+      '<button type="button" class="btn-primary" id="copy-btn" style="margin-top:14px;">Code kopieren</button>' +
+      '<p style="margin-top:16px; color:var(--ink-soft); font-size:13px;">Diesen Code jetzt zurück an Claude schicken (im Chat einfügen ist unbedenklich, ist nur ein einmaliger Code, kein Passwort).</p>';
+    document.getElementById("copy-btn").addEventListener("click", function () {
+      navigator.clipboard.writeText(code);
+      this.textContent = "Kopiert!";
+    });
+  }
+</script>
+
+</body>
+</html>

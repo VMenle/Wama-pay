@@ -42,6 +42,10 @@
         <div class="form-success" id="form-success" style="display:none;"></div>
       </form>
 
+      <p style="margin-top:12px; font-size:13.5px;" id="forgot-password-row">
+        <a href="#" id="forgot-password-link" style="color:var(--blue); font-weight:700;">Passwort vergessen?</a>
+      </p>
+
       <p style="margin-top:16px; font-size:13.5px; color:var(--ink-soft);">
         <span id="toggle-mode-text">Noch kein Konto?</span>
         <a href="#" id="toggle-mode-link" style="color:var(--blue); font-weight:700;">Jetzt registrieren</a>
@@ -77,6 +81,25 @@
   document.getElementById("toggle-mode-link").addEventListener("click", function (e) {
     e.preventDefault();
     setMode(mode === "signup" ? "signin" : "signup");
+  });
+
+  document.getElementById("forgot-password-link").addEventListener("click", async function (e) {
+    e.preventDefault();
+    var email = document.getElementById("email").value.trim();
+    if (!email) {
+      showError("Bitte zuerst Ihre E-Mail-Adresse oben eintragen, dann auf \"Passwort vergessen?\" klicken.");
+      return;
+    }
+    try {
+      var client = await window.wamaSupabaseReady;
+      var { error } = await client.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + "/webapp-customer/reset-password.html",
+      });
+      if (error) throw error;
+      showSuccess("Falls ein Konto mit dieser E-Mail-Adresse existiert, wurde eine E-Mail zum Zurücksetzen des Passworts verschickt.");
+    } catch (err) {
+      showError(err.message || "Fehler beim Anfordern des Zurücksetzen-Links.");
+    }
   });
 
   function showError(msg) {

@@ -24,8 +24,12 @@ Deno.serve(async (req: Request) => {
 
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
+  const codeVerifier = url.searchParams.get("code_verifier");
   if (!code) {
     return jsonResponse({ error: "missing_code", detail: "Query-Parameter 'code' fehlt." }, 400);
+  }
+  if (!codeVerifier) {
+    return jsonResponse({ error: "missing_code_verifier", detail: "Query-Parameter 'code_verifier' fehlt (PKCE)." }, 400);
   }
 
   const clientId = Deno.env.get("KONTIST_CLIENT_ID");
@@ -41,6 +45,7 @@ Deno.serve(async (req: Request) => {
     redirect_uri: redirectUri,
     client_id: clientId,
     client_secret: clientSecret,
+    code_verifier: codeVerifier,
   });
 
   const res = await fetch(KONTIST_TOKEN_URL, {

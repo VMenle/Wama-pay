@@ -16,10 +16,19 @@ import { createSupabaseAdminClient } from "../_shared/supabaseAdmin.ts";
 import { PROVIDER_ADAPTERS } from "../_shared/paymentProviderAdapter.ts";
 import { markOrderFailed, markOrderPaid, releaseOrder } from "../_shared/orderLifecycle.ts";
 
-// Wie lange eine Reservierung ohne Zahlungsbestätigung gültig bleibt, bevor
-// der n8n-Cron-Workflow "reservation-timeout-guard" sie aufräumt (siehe
-// supabase/migrations/0011_reservation_timeout_guard.sql).
+// Wie lange eine Reservierung ohne Zahlungsbestätigung gültig bleibt --
+// unverändert 15 Minuten, das Gerät bleibt für den Kunden bis dahin
+// reserviert (er könnte z.B. noch mitten in der Karteneingabe sein).
 const RESERVATION_WINDOW_MINUTES = 15;
+
+// Zwischen-Zeitpunkte (Minuten nach der Reservierung), zu denen VORAB aktiv
+// beim Zahlungsanbieter nachgefragt wird, falls bis dahin kein Webhook kam
+// -- reine Vorab-Erkennung, damit eine tatsächlich erfolgreiche Zahlung dem
+// Kunden nicht erst nach den vollen 15 Minuten angezeigt wird. Diese Checks
+// brechen NICHTS ab, wenn der Anbieter weiterhin "pending" meldet -- das
+// macht ausschließlich der finale Check am Ende von
+// RESERVATION_WINDOW_MINUTES (siehe unten).
+const EARLY_CHECK_OFFSETS_MINUTES = [1, 2, 3];
 
 Deno.serve(async (req: Request) => {
   const preflight = handleCorsPreflight(req);
@@ -191,17 +200,32 @@ Deno.serve(async (req: Request) => {
       .update({ status: "payment_pending", provider_ref: checkout.providerRef })
       .eq("id", order.id);
 
-    // Plant einen einmaligen pg_cron-Job exakt zum Ablauf der Reservierung
-    // (Migration 0024) -- fragt aktiv bei SumUp nach (Sicherheitsnetz,
-    // falls der Webhook nicht ankommt) und räumt erst danach auf, falls
-    // die Zahlung weiterhin nicht bestätigt ist. Fehlschlag hier blockiert
-    // den Zahlungsablauf selbst nicht, wird nur geloggt.
-    const { error: scheduleError } = await supabase.rpc("schedule_reservation_expiry_check", {
+    // Plant mehrere einmalige pg_cron-Jobs (Migration 0025), die aktiv bei
+    // SumUp nachfragen (Sicherheitsnetz, falls der Webhook nicht ankommt):
+    // drei frühe, NICHT-finale Checks nach 1/2/3 Minuten (erkennen nur eine
+    // bereits erfolgreiche Zahlung vor -- brechen bei "pending" nichts ab),
+    // und ein finaler Check exakt am Ende der 15-Minuten-Reservierung, der
+    // bei weiterhin unbestätigter Zahlung die Reservierung tatsächlich
+    // abbricht und das Gerät freigibt. Fehlschlag hier blockiert den
+    // Zahlungsablauf selbst nicht, wird nur geloggt.
+    for (const offsetMinutes of EARLY_CHECK_OFFSETS_MINUTES) {
+      const runAt = new Date(Date.now() + offsetMinutes * 60_000).toISOString();
+      const { error: scheduleError } = await supabase.rpc("schedule_reservation_expiry_check", {
+        p_run_at: runAt,
+        p_order_id: order.id,
+        p_is_final: false,
+      });
+      if (scheduleError) {
+        console.error(`Früher Zahlungs-Check (+${offsetMinutes} Min) konnte nicht eingeplant werden (order ${order.id}):`, scheduleError.message);
+      }
+    }
+    const { error: finalScheduleError } = await supabase.rpc("schedule_reservation_expiry_check", {
       p_run_at: reservationExpiresAt,
       p_order_id: order.id,
+      p_is_final: true,
     });
-    if (scheduleError) {
-      console.error(`Reservierungs-Timeout konnte nicht eingeplant werden (order ${order.id}):`, scheduleError.message);
+    if (finalScheduleError) {
+      console.error(`Finaler Reservierungs-Timeout konnte nicht eingeplant werden (order ${order.id}):`, finalScheduleError.message);
     }
 
     return jsonResponse({

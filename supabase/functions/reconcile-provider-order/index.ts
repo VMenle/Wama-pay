@@ -4,18 +4,19 @@
 // Zahlungsanbieters ausbleibt (SumUp garantiert Zustellung nicht -- siehe
 // Vorfall: echte Zahlung erfolgreich, aber payment-webhook nie aufgerufen).
 //
-// Wird kurz nach Ablauf des Reservierungsfensters aufgerufen (siehe
-// Migration 0024, schedule_reservation_expiry_check() -- derselbe
-// einmalige, selbst-entfernende pg_cron-Job-Mechanismus wie zuvor, ruft
-// jetzt diese Function statt nur expire_stale_reservations() direkt).
-//
-// Ablauf: Order laden -> falls noch nicht final verarbeitet -> AKTIV beim
-// Provider nachfragen (adapter.getStatusByRef) -> denselben idempotenten
-// Bestätigungs-Ablauf wie der echte Webhook durchlaufen
-// (confirmProviderOrder). Meldet der Provider immer noch "pending" (oder
-// schlägt die Abfrage fehl), gilt die Reservierung als abgelaufen -- Order
-// wird auf 'failed' gesetzt, Gerät wieder freigegeben, exakt wie bisher
-// expire_stale_reservations() das für liegengebliebene Reservierungen tat.
+// Wird zu mehreren Zeitpunkten pro Reservierung aufgerufen (siehe
+// Migration 0024, schedule_reservation_expiry_check(), und
+// create-checkout/index.ts):
+// - Frühe, NICHT-finale Checks (is_final=false, 1/2/3 Minuten nach der
+//   Reservierung): erkennen nur eine bereits erfolgreiche Zahlung vorzeitig
+//   vor. Meldet der Provider weiterhin "pending", passiert NICHTS -- die
+//   Reservierung bleibt bestehen (der Kunde könnte noch mitten in der
+//   Zahlung sein).
+// - Ein finaler Check (is_final=true, exakt am Ende des 15-Minuten-
+//   Reservierungsfensters): meldet der Provider dann immer noch nichts
+//   Endgültiges, wird die Reservierung abgebrochen und das Gerät wieder
+//   freigegeben -- exakt wie bisher expire_stale_reservations() das für
+//   liegengebliebene Reservierungen tat.
 import { handleCorsPreflight, jsonResponse } from "../_shared/cors.ts";
 import { createSupabaseAdminClient } from "../_shared/supabaseAdmin.ts";
 import { PROVIDER_ADAPTERS } from "../_shared/paymentProviderAdapter.ts";
@@ -29,7 +30,7 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: "method_not_allowed" }, 405);
   }
 
-  let body: { order_id?: string };
+  let body: { order_id?: string; is_final?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -37,6 +38,7 @@ Deno.serve(async (req: Request) => {
   }
 
   const orderId = body.order_id;
+  const isFinal = body.is_final === true;
   if (!orderId) {
     return jsonResponse({ error: "missing_order_id" }, 400);
   }
@@ -64,20 +66,55 @@ Deno.serve(async (req: Request) => {
   if (adapter && order.provider_ref) {
     try {
       const payload = await adapter.getStatusByRef(order.provider_ref);
-      const outcome = await confirmProviderOrder(supabase, order, { status: payload.status });
-      console.log(`reconcile-provider-order: Order '${order.id}' -> ${outcome} (Provider meldet: ${payload.status}).`);
+
+      // Der Provider-Aufruf oben braucht Zeit (Netzwerk) -- in der
+      // Zwischenzeit könnte der echte Webhook die Order längst final
+      // verarbeitet haben. Status deshalb unmittelbar vor dem Anwenden
+      // NOCHMAL frisch laden, statt mit dem eingangs geladenen (ggf.
+      // inzwischen veralteten) Stand weiterzuarbeiten -- sonst könnte
+      // die Freigabe (inkl. Schaltlink-Aufruf) doppelt ausgelöst werden.
+      const { data: freshOrder, error: freshOrderError } = await supabase
+        .from("orders")
+        .select("id, project_id, device_id, status")
+        .eq("id", order.id)
+        .single();
+
+      if (freshOrderError || !freshOrder) {
+        console.error(`reconcile-provider-order: Order '${order.id}' beim erneuten Laden nicht gefunden.`);
+        return jsonResponse({ error: "order_not_found" }, 404);
+      }
+
+      const outcome = await confirmProviderOrder(supabase, freshOrder, { status: payload.status });
+      console.log(`reconcile-provider-order: Order '${order.id}' (is_final=${isFinal}) -> ${outcome} (Provider meldet: ${payload.status}).`);
       if (outcome !== "no_action") {
         return jsonResponse({ ok: true, outcome });
       }
-      // Provider meldet weiterhin 'pending' -- Reservierungsfenster ist
-      // trotzdem abgelaufen, fällt unten auf denselben Timeout-Pfad wie
-      // expire_stale_reservations() zurück.
+      // Provider meldet weiterhin 'pending'.
     } catch (err) {
       console.error(`reconcile-provider-order: Aktive Statusabfrage bei Provider '${order.provider_id}' fehlgeschlagen:`, err);
-      // fällt ebenfalls auf den Timeout-Pfad unten zurück.
     }
   }
 
-  await markOrderFailed(supabase, order, "reservation_timeout_after_reconcile");
+  // Weiterhin unbestätigt: bei einem frühen (nicht-finalen) Check ist das
+  // normal -- die Reservierung bleibt bestehen, kein Abbruch. Erst der
+  // finale Check am Ende des Reservierungsfensters bricht tatsächlich ab.
+  if (!isFinal) {
+    return jsonResponse({ ok: true, outcome: "still_pending" });
+  }
+
+  // Auch hier nochmal frisch laden (siehe Kommentar oben) -- markOrderFailed
+  // selbst prüft zwar den Status defensiv (nur aus reserved/payment_pending
+  // heraus), ein aktueller Stand vermeidet aber unnötige No-Op-Aufrufe.
+  const { data: finalOrder } = await supabase
+    .from("orders")
+    .select("id, project_id, device_id, status")
+    .eq("id", order.id)
+    .single();
+
+  if (finalOrder && finalOrder.status !== "reserved" && finalOrder.status !== "payment_pending") {
+    return jsonResponse({ ok: true, outcome: "already_processed" });
+  }
+
+  await markOrderFailed(supabase, finalOrder ?? order, "reservation_timeout_after_reconcile");
   return jsonResponse({ ok: true, outcome: "expired" });
 });

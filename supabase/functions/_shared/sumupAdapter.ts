@@ -79,11 +79,18 @@ async function sumupRequest(path: string, init: RequestInit): Promise<Record<str
   return body as Record<string, unknown>;
 }
 
-// Offizielle Status-Werte lt. SumUp-Checkout-Schema: PENDING | EXPIRED | SUCCESSFUL.
+// Echte Status-Werte lt. SumUp-Checkout-API: PENDING | PAID | FAILED | EXPIRED
+// (Quelle: developer.sumup.com API-Referenz -- die zuvor angenommenen Werte
+// "PENDING | EXPIRED | SUCCESSFUL" waren falsch: SumUp liefert bei
+// erfolgreicher Zahlung "PAID", nicht "SUCCESSFUL". Dadurch wurde eine
+// tatsächlich erfolgreiche Zahlung nie erkannt -- weder im Webhook noch bei
+// der aktiven Nachfrage (reconcile-provider-order) -- und blieb dauerhaft
+// als "pending" stehen. Das war die eigentliche Ursache des Vorfalls vom
+// 24.08.2026 (echte Zahlung erfolgreich, Order nie freigeschaltet).
 function mapSumupStatus(sumupStatus: unknown): "paid" | "failed" | "pending" {
   const status = String(sumupStatus ?? "").toUpperCase();
-  if (status === "SUCCESSFUL") return "paid";
-  if (status === "EXPIRED") return "failed";
+  if (status === "PAID") return "paid";
+  if (status === "FAILED" || status === "EXPIRED") return "failed";
   return "pending"; // PENDING
 }
 

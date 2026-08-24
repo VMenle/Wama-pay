@@ -110,7 +110,16 @@
   }
 
   var POLL_INTERVAL_MS = 1500;
-  var MAX_POLLS = 80; // ~2 Minuten
+  // Die Reservierung wird jetzt bewusst die vollen 15 Minuten gehalten (siehe
+  // schedule_reservation_expiry_check(), Migration 0024/0025) -- der finale
+  // Check, der eine Zahlung noch bestätigen oder die Reservierung abbrechen
+  // kann, läuft erst GENAU zum 15-Minuten-Zeitpunkt. Ein deutlich kürzeres
+  // Polling-Timeout hier (vorher nur ~2 Minuten) hätte dem Kunden fälschlich
+  // "nicht rechtzeitig bestätigt" angezeigt, während die Zahlung im
+  // Hintergrund noch bis zu 15 Minuten lang gültig gewesen wäre -- z.B. wenn
+  // das Eintippen der Kartendaten länger dauert. +60s Puffer, damit der
+  // finale Check selbst noch Zeit hat zu laufen und die Order zu aktualisieren.
+  var MAX_POLLS = Math.ceil((16 * 60 * 1000) / POLL_INTERVAL_MS); // ~16 Minuten
   var pollCount = 0;
 
   async function pollOrderStatus() {

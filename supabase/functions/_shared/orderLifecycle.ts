@@ -57,7 +57,18 @@ export async function markOrderPaid(
     .from("orders")
     .update({ status: "paid", paid_at: new Date().toISOString() })
     .eq("id", order.id)
-    .eq("status", "reserved"); // Idempotenz: nur aus 'reserved' heraus, kein doppelter Übergang
+    // Idempotenz: kein doppelter Übergang. Zwei Ausgangsstatus sind gültig --
+    // 'reserved' (Wallet-Zahlung: markOrderPaid direkt nach dem Anlegen der
+    // Order aufgerufen, siehe create-checkout) und 'payment_pending'
+    // (Provider-Zahlung: create-checkout setzt die Order nach dem Erstellen
+    // der SumUp-Checkout-Session auf 'payment_pending', BEVOR eine
+    // Bestätigung eintrifft -- das ist der Status, den confirmProviderOrder
+    // hier praktisch immer vorfindet). Ein Filter nur auf 'reserved' hätte
+    // bei jeder Kartenzahlung null Zeilen getroffen, ohne Fehler zu werfen --
+    // die Order blieb dann trotz erfolgreicher Zahlung für immer auf
+    // 'payment_pending' hängen, während releaseOrder() das Gerät trotzdem
+    // freischaltete (kein Statuscheck dort).
+    .in("status", ["reserved", "payment_pending"]);
 
   if (error) throw new Error(`Order konnte nicht auf 'paid' gesetzt werden: ${error.message}`);
 

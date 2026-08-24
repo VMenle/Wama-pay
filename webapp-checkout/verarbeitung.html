@@ -59,6 +59,15 @@
     var link = document.getElementById("redirect-link");
     link.href = redirectUrl;
     window.wamaRenderQrCode("qr-container", redirectUrl);
+
+    // Solange die Zahlung noch gar nicht gestartet wurde (Kunde ist noch
+    // auf dieser Seite, hat den Link/QR-Code oben noch nicht genutzt),
+    // ist "Zahlung wird geprüft" irreführend -- es gibt ja noch nichts zu
+    // prüfen. Der Text wird unten in applyStatus() automatisch korrigiert,
+    // sobald der Order-Status tatsächlich auf 'paid' wechselt.
+    document.getElementById("process-title").textContent = "Bereit zum Bezahlen";
+    document.getElementById("process-subtitle").textContent =
+      "Sobald die Zahlung abgeschlossen ist, geht es hier automatisch weiter.";
   }
 
   function markDone(id) { document.getElementById(id).classList.add("done"); }
@@ -77,6 +86,9 @@
       return "pending";
     }
     if (status === "paid") {
+      document.getElementById("redirect-hint").style.display = "none";
+      document.getElementById("process-title").textContent = "Zahlung wird geprüft…";
+      document.getElementById("process-subtitle").textContent = "Bitte schließen Sie dieses Fenster nicht.";
       markDone("step-1");
       return "pending";
     }
